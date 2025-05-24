@@ -1,0 +1,1001 @@
+/* global SC */
+
+// ---------------------------------------------------------------------
+// IMPORTS
+// ---------------------------------------------------------------------
+import { 
+  Application, Container, Sprite, Text, Texture, Assets,
+  extensions, SCALE_MODES
+} from 'pixi.js';
+import * as Menu from './menu.js';
+import * as MixCodeFactory from './mix.js';
+import AssetData from './assets/asset-data.json';
+import MixUrls from './mixurls.json';
+import ArtistLinks from './artist-links.json';
+import _ from 'lodash';
+import Utils from '~/utils';
+import DisplayDebug from './display-debug.js';
+import LayerDebug from './layer-debug.js';
+import LayerInspector from './layer-inspector.js';
+import forceShowLayers from './layer-force.js';
+
+// Initialize Assets with proper base path
+await Assets.init({
+  basePath: 'http://localhost:3000'
+});
+
+// Fallback WebP loader that works reliably
+window.loadWebpFallback = async (url) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = () => {
+      console.log(`WebP fallback loaded: ${url}`);
+      const texture = Texture.from(img);
+      texture._isWebp = true;
+      texture.valid = true;
+      resolve(texture);
+    };
+    
+    img.onerror = () => {
+      console.error(`Failed to load WebP: ${url}`);
+      resolve(null);
+    };
+    
+    img.src = url;
+  });
+};
+
+// Debug helper for textures and sprites that can be triggered from the console
+window.debugTextures = () => {
+  console.log("======= TEXTURE DEBUG =======");
+  
+  // Extract textures and sprites from the stage
+  const app = window.pixiApp; // We'll set this later
+  if (!app) {
+    console.error("PixiJS app not available - run this after app is initialized");
+    return;
+  }
+  
+  // Create a simple visual debug overlay
+  const debugOverlay = document.createElement('div');
+  debugOverlay.style.position = 'fixed';
+  debugOverlay.style.top = '10px';
+  debugOverlay.style.left = '10px';
+  debugOverlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+  debugOverlay.style.color = 'white';
+  debugOverlay.style.padding = '10px';
+  debugOverlay.style.fontFamily = 'monospace';
+  debugOverlay.style.zIndex = '9999';
+  debugOverlay.style.maxHeight = '80vh';
+  debugOverlay.style.overflow = 'auto';
+  debugOverlay.style.maxWidth = '80vw';
+  debugOverlay.style.fontSize = '12px';
+  
+  const processContainer = (container, path = "app.stage") => {
+    if (!container.children) return;
+    
+    container.children.forEach((child, index) => {
+      const childPath = `${path}.children[${index}]`;
+      
+      if (child instanceof Sprite) {
+        const texture = child.texture;
+        let textureInfo = "No texture";
+        if (texture) {
+          textureInfo = `Valid: ${texture.valid}, Width: ${texture.width}, Height: ${texture.height}, ` + 
+                       `Source: ${texture.source?.constructor?.name || 'None'}`;
+        }
+        
+        const childInfo = document.createElement('div');
+        childInfo.innerHTML = `
+          <div style="margin-bottom: 10px; border-bottom: 1px solid #555;">
+            <div><b>Path:</b> ${childPath}</div>
+            <div><b>Sprite:</b> Visible=${child.visible}, Alpha=${child.alpha.toFixed(2)}, ` +
+                `Size=${child.width.toFixed(0)}x${child.height.toFixed(0)}</div>
+            <div><b>Position:</b> X=${child.x.toFixed(0)}, Y=${child.y.toFixed(0)}, ZIndex=${child.zIndex}</div>
+            <div><b>Texture:</b> ${textureInfo}</div>
+            <div><b>Type:</b> ${texture?._isWebp ? 'WebP' : texture?._isGif ? 'GIF' : 'Regular'}</div>
+            <button class="debug-highlight" data-path="${childPath}" style="margin-top: 5px;">Highlight</button>
+          </div>
+        `;
+        
+        debugOverlay.appendChild(childInfo);
+      }
+      
+      if (child.children && child.children.length) {
+        processContainer(child, childPath);
+      }
+    });
+  };
+  
+  processContainer(app.stage);
+  document.body.appendChild(debugOverlay);
+  
+  // Add highlight functionality
+  debugOverlay.querySelectorAll('.debug-highlight').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const path = this.getAttribute('data-path');
+      const parts = path.split('.').slice(1); // Skip "app"
+      
+      let target = app;
+      parts.forEach(part => {
+        const match = part.match(/(\w+)\[(\d+)\]/);
+        if (match) {
+          const prop = match[1];
+          const idx = parseInt(match[2]);
+          target = target[prop][idx];
+        } else {
+          target = target[part];
+        }
+      });
+      
+      if (target) {
+        // Flash the sprite
+        const originalAlpha = target.alpha;
+        const originalTint = target.tint;
+        
+        target.alpha = 1;
+        target.tint = 0xFF0000; // Red
+        
+        setTimeout(() => {
+          target.alpha = originalAlpha;
+          target.tint = originalTint;
+        }, 2000);
+      }
+    });
+  });
+  
+  // Add close button
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'Close Debug';
+  closeBtn.style.marginTop = '10px';
+  closeBtn.style.marginBottom = '10px';
+  closeBtn.style.padding = '5px 10px';
+  closeBtn.addEventListener('click', () => {
+    document.body.removeChild(debugOverlay);
+  });
+  debugOverlay.prepend(closeBtn);
+  
+  console.log("Visual texture debugger opened. Click Highlight buttons to flash sprites.");
+};
+
+// Simplified asset loader that correctly handles both GIFs and static images
+const loadAsset = async (url) => {
+  try {
+    const cleanUrl = url.replace(/\/+/g, '/').replace(/^\//, '');
+    console.log('Loading asset:', cleanUrl);
+    
+    const isGif = cleanUrl.toLowerCase().endsWith('.gif');
+    const isWebp = cleanUrl.toLowerCase().endsWith('.webp');
+    
+    // For GIFs, use specialized handling
+    if (isGif) {
+      // Create an HTML image element for the GIF
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = () => {
+          console.log(`GIF loaded: ${cleanUrl} (${img.width}x${img.height})`);
+          
+          // Create texture from image
+          const texture = Texture.from(img);
+          texture._isGif = true;
+          texture.valid = true; // Force texture to be valid
+          
+          // Keep the original image in the DOM so the GIF can animate
+          // This is important! The image needs to stay in the DOM for animation
+          const hiddenDiv = document.createElement('div');
+          hiddenDiv.style.position = 'fixed';
+          hiddenDiv.style.opacity = '0';
+          hiddenDiv.style.pointerEvents = 'none';
+          hiddenDiv.style.left = '-9999px';
+          hiddenDiv.style.top = '-9999px';
+          hiddenDiv.appendChild(img);
+          document.body.appendChild(hiddenDiv);
+          
+          // Store references for cleanup
+          texture._gifImg = img;
+          texture._gifDiv = hiddenDiv;
+          
+          console.log(`Created GIF texture for ${cleanUrl}`);
+          resolve(texture);
+        };
+        
+        img.onerror = () => {
+          console.error(`Failed to load GIF: ${cleanUrl}`);
+          resolve(null);
+        };
+        
+        img.src = cleanUrl;
+      });
+    } 
+    // For WebP images, use the Assets.load approach which properly handles WebP in PixiJS v8
+    else if (isWebp) {
+      try {
+        // Use Assets.load which properly handles WebP in PixiJS v8
+        const texture = await Assets.load(cleanUrl);
+        
+        if (texture) {
+          console.log(`WebP loaded directly via Assets.load: ${cleanUrl}`);
+          texture.valid = true;
+        } else {
+          console.warn(`Failed to load WebP via Assets.load: ${cleanUrl}`);
+        }
+        
+        return texture;
+      } catch (err) {
+        console.error(`Error loading WebP via Assets.load: ${cleanUrl}`, err);
+        return null;
+      }
+    } else {
+      // For other image types, use standard approach
+      const texture = await Assets.load(cleanUrl);
+      // Force texture to be valid
+      if (texture) {
+        texture.valid = true; 
+        console.log(`Regular texture loaded: ${cleanUrl} (${texture.width}x${texture.height})`);
+      }
+      return texture;
+    }
+  } catch (err) {
+    console.error('Error loading asset:', url, err);
+    return null;
+  }
+};
+
+const getAssets = async (assetsData, mix, layer) => {
+  if (!assetsData[mix]?.[layer]) return [];
+
+  const results = [];
+  const assets = assetsData[mix][layer].filter(asset => asset?.filename);
+
+  for (const asset of assets) {
+    try {
+      const assetPath = `assets/${mix}/${layer}/${encodeURIComponent(asset.filename.trim())}`;
+      let texture = await loadAsset(assetPath);
+      
+      // Try fallback loading method if the texture failed to load
+      if (!texture && assetPath.toLowerCase().endsWith('.webp')) {
+        console.log(`Attempting fallback WebP loading for: ${assetPath}`);
+        texture = await window.loadWebpFallback(assetPath);
+      }
+      
+      if (texture) {
+        // Ensure texture is properly marked as valid
+        texture.valid = true;
+        
+        results.push({
+          ...asset,
+          filename: assetPath,
+          texture,
+          valid: true
+        });
+        console.log(`Successfully loaded: ${assetPath}`);
+      } else {
+        console.warn(`Failed to load texture: ${assetPath}`);
+      }
+    } catch (err) {
+      console.error(`Error processing asset: ${asset.filename}`, err);
+    }
+  }
+
+  return results;
+};
+
+(async () => {
+  // ---------------------------------------------------------------------
+  // CONFIGURATION CONSTANTS
+  // ---------------------------------------------------------------------
+  const BASE_ASSET_URL = '';
+  const MIX_COUNT = 40;
+
+  // Log PixiJS version - use only the imported Application, not global PIXI
+  console.log('PixiJS version:', Application.VERSION || 'unknown');
+
+  // ---------------------------------------------------------------------
+  // CREATE PIXI APPLICATION
+  // ---------------------------------------------------------------------
+  const mainCanvas = document.createElement('canvas');
+  const app = new Application();
+  await app.init({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundColor: 0xA9A9A9,
+    canvas: mainCanvas
+  });
+  
+  // Make app available globally for debugging
+  window.pixiApp = app;
+  
+  // Configure Assets system for better texture loading
+  Assets.setPreferences({
+    preferCreateImageBitmap: false, // This helps with some WebP issues
+    crossOrigin: 'anonymous'
+  });
+  
+  // Make forceShowLayers available globally for debugging
+  window.forceShowLayers = forceShowLayers;
+  
+  // Add keyboard shortcut for toggling debug panel (Ctrl+D)
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'd') {
+      e.preventDefault();
+      LayerDebug.toggle();
+    } else if (e.ctrlKey && e.key === 'i') {
+      e.preventDefault();
+      LayerInspector.toggle();
+    }
+  });
+
+  // Use a simpler approach for GIF updates
+  app.updateGifSprites = () => {
+    const processContainer = (container) => {
+      if (!container || !container.children) return;
+      
+      container.children.forEach(child => {
+        // Recursively process children
+        if (child.children) {
+          processContainer(child);
+        }
+        
+        // Update GIF textures - uses source instead of baseTexture in PixiJS v8
+        if (child.texture && child.texture._isGif) {
+          // Use source instead of baseTexture in PixiJS v8
+          if (child.texture.source) {
+            child.texture.source.update();
+          }
+          child.texture.update();
+        }
+      });
+    };
+    
+    processContainer(app.stage);
+  };
+  
+  // Call update frequently for smooth animation
+  app.ticker.add(app.updateGifSprites);
+  
+  app.resizeTo = window;
+  document.body.appendChild(mainCanvas);
+
+  // Initialize the layer debug panel
+  LayerDebug.init();
+  
+  // Initialize the layer inspector (hidden by default)
+  LayerInspector.init();
+
+  // ---------------------------------------------------------------------
+  // FULLSCREEN CSS & APP CONFIG
+  // ---------------------------------------------------------------------
+  document.body.style.overflow = 'hidden';
+  document.body.style.padding = '0';
+  document.body.style.margin = '0';
+  document.body.style.width = '100%';
+  document.body.style.height = '100%';
+
+  app.stage.sortableChildren = true;
+
+  // Initialize background container
+  let backgroundContainer = new Container();
+  backgroundContainer.sortableChildren = true;
+  
+  // Initialize render containers
+  const renderContainers = {
+    menu: new Container()
+  };
+
+  const constructTextEntry = (textContent) => {
+    const text = new Text({
+      text: textContent,
+      style: {
+        fontFamily: 'Arial',
+        fontSize: 44,
+        fill: 'black',
+        fontStretch: 'extra-condensed',
+      }
+    });
+    text.anchor.set(0.5);
+
+    const txtBG = new Sprite(Texture.WHITE);
+    txtBG.anchor.set(0.5);
+    txtBG.tint = 0xffff1a;
+    txtBG.width = text.height * 1.2;  // Increased from 0.8 to 1.2
+    txtBG.height = text.height * 1.2; // Increased from 0.8 to 1.2
+
+    const cage = new Container();
+    cage.interactive = true;
+    cage.buttonMode = true;
+    cage.on('pointerover', () => { txtBG.tint = 0xffffff; });
+    cage.on('pointerout', () => { txtBG.tint = 0xffff1a; });
+    cage.addChild(txtBG, text);
+    return cage;
+  };
+
+  const fwdButton = constructTextEntry('>');
+  const bwButton = constructTextEntry('<');
+  fwdButton.zIndex = 1500;
+  bwButton.zIndex = 1500;
+  bwButton.x = window.innerWidth - 31;
+  bwButton.y = window.innerHeight - 80;
+  fwdButton.x = window.innerWidth - 31;
+  fwdButton.y = window.innerHeight - 160;
+  app.stage.addChild(fwdButton, bwButton);
+
+  fwdButton.on("pointertap", () => changeMix(1));
+  bwButton.on("pointertap", () => changeMix(-1));
+
+  // Add variables needed for SoundCloud
+  const svgNS = "http://www.w3.org/2000/svg";
+  let scPlayer = null;
+  let isPlaying = false;
+
+  // Add progress bar
+  const createProgressBar = () => {
+    const progressBar = document.createElement('div');
+    progressBar.style.position = 'fixed';
+    progressBar.style.bottom = '0';
+    progressBar.style.left = '0';
+    progressBar.style.width = '100%';
+    progressBar.style.height = '20px';
+    progressBar.style.backgroundColor = 'transparent';
+    progressBar.style.cursor = 'pointer';
+    progressBar.style.zIndex = '1999';
+
+    const progress = document.createElement('div');
+    progress.style.width = '0%';
+    progress.style.height = '100%';
+    progress.style.backgroundColor = 'yellow';
+    progressBar.appendChild(progress);
+
+    // Click handler for seeking
+    progressBar.addEventListener('click', async (e) => {
+      if (!scPlayer) return;
+      const rect = progressBar.getBoundingClientRect();
+      const pos = (e.clientX - rect.left) / rect.width;
+      scPlayer.getDuration((duration) => {
+        scPlayer.seekTo(duration * pos);
+      });
+    });
+
+    // Update progress periodically
+    setInterval(() => {
+      if (scPlayer && isPlaying) {
+        scPlayer.getPosition((position) => {
+          scPlayer.getDuration((duration) => {
+            const percentage = (position / duration) * 100;
+            progress.style.width = `${percentage}%`;
+          });
+        });
+      }
+    }, 100);
+
+    return progressBar;
+  };
+
+  let progressBar = createProgressBar();
+  document.body.appendChild(progressBar);
+
+  // Restore the original play button with correct styling and position
+  const createPlaySVG = () => {
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 200 200");
+    svg.style.position = "fixed";
+    svg.style.bottom = "30px";  // Closer to bottom edge
+    svg.style.left = "30px";    // Closer to left edge
+    svg.style.width = "225px";  // Increased from 180px (+25%)
+    svg.style.height = "225px"; // Increased from 180px (+25%)
+    svg.style.overflow = "visible";
+    svg.style.pointerEvents = "auto";
+    svg.style.zIndex = "2000";
+    svg.style.cursor = "pointer";
+
+    // Create play triangle
+    const playShape = document.createElementNS(svgNS, "polygon");
+    // Adjusted coordinates to stay within viewBox bounds
+    playShape.setAttribute("points", "40,40 40,160 140,100");
+    playShape.setAttribute("fill", "yellow");
+    svg.appendChild(playShape);
+
+    // Add click handler for play/pause toggle
+    svg.addEventListener('click', () => {
+      const isPlayButton = playShape.getAttribute("points") === "40,40 40,160 140,100";
+      if (isPlayButton) {
+        // Switch to pause symbol - rectangles moved closer together
+        playShape.setAttribute("points", "40,40 75,40 75,160 40,160, 40,40 115,40 150,40 150,160 115,160 115,40");
+      } else {
+        // Switch back to play triangle
+        playShape.setAttribute("points", "40,40 40,160 140,100");
+      }
+      togglePlay();
+    });
+
+    return svg;
+  };
+
+  let playPauseSVG = createPlaySVG();
+  document.body.appendChild(playPauseSVG);
+
+  const initSoundCloud = () => {
+    const iframe = document.createElement('iframe');
+    iframe.id = 'sc-widget';
+    iframe.allow = 'autoplay';
+    iframe.width = '100%';
+    iframe.height = '100';
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    return iframe;
+  };
+
+  const togglePlay = async () => {
+    const mixName = window.location.hash.replace('#', '') || 'mix01';
+    const embedUrl = MixUrls[mixName];
+    if (!embedUrl) {
+      console.error('No SoundCloud embed URL found for mix:', mixName);
+      return;
+    }
+
+    try {
+      if (!scPlayer) {
+        const iframe = initSoundCloud();
+        iframe.src = embedUrl;
+
+        // Wait for iframe to load
+        await new Promise(resolve => {
+          iframe.onload = resolve;
+        });
+        
+        scPlayer = SC.Widget(iframe);
+        await new Promise((resolve) => {
+          scPlayer.bind(SC.Widget.Events.READY, () => {
+            scPlayer.play();
+            resolve();
+          });
+        });
+
+        // Add finish event listener
+        scPlayer.bind(SC.Widget.Events.FINISH, () => {
+          isPlaying = false;
+          playPauseSVG.querySelector('polygon').setAttribute("points", "40,40 40,160 140,100");
+          progressBar.querySelector('div').style.width = '0%';
+        });
+      } else {
+        if (isPlaying) {
+          scPlayer.pause();
+        } else {
+          scPlayer.play();
+        }
+      }
+
+      // Update button state
+      if (isPlaying) {
+        playPauseSVG.querySelector('polygon').setAttribute("points", "40,40 40,160 140,100");
+      } else {
+        playPauseSVG.querySelector('polygon').setAttribute("points", "40,40 75,40 75,160 40,160, 40,40 115,40 150,40 150,160 115,160 115,40");
+      }
+      isPlaying = !isPlaying;
+    } catch (err) {
+      console.error('SoundCloud playback error:', err);
+      if (scPlayer) {
+        scPlayer = null;
+      }
+      isPlaying = false;
+      playPauseSVG.querySelector('polygon').setAttribute("points", "40,40 40,160 140,100");
+    }
+  };
+
+  const renderPage = async () => {
+    console.log('Rendering page...');
+    
+    // Immediately clean up any existing DOM elements to avoid flashing
+    document.querySelectorAll('img[data-layer-type]').forEach(img => {
+      // Turn off transition for immediate removal
+      img.style.transition = 'none';
+      img.style.opacity = '0';
+      
+      // Cancel any animation frames
+      if (img._animationFrameId) {
+        cancelAnimationFrame(img._animationFrameId);
+      }
+      
+      // Clear any fade intervals
+      if (img._fadeInterval) {
+        clearInterval(img._fadeInterval);
+      }
+      
+      // Clear any remove timeouts
+      if (img._removeTimeout) {
+        clearTimeout(img._removeTimeout);
+      }
+      
+      // Remove from DOM immediately
+      if (img.parentNode) {
+        img.parentNode.removeChild(img);
+      }
+    });
+      
+      // First call any cleanup functions on the containers
+      backgroundContainer.children.forEach(layerContainer => {
+        // Check if container has a cleanup function (for DOM-based renderers)
+        if (typeof layerContainer.cleanup === 'function') {
+          console.log('Calling cleanup function for layer container');
+          layerContainer.cleanup();
+        }
+        
+        // Then clean up any sprites
+        layerContainer.children.forEach(sprite => {
+          // Clean up any GIF DOM elements to prevent memory leaks
+          if (sprite.texture && sprite.texture._gifDiv) {
+            try {
+              document.body.removeChild(sprite.texture._gifDiv);
+              console.log('Removed GIF container for cleanup');
+            } catch (e) {
+              console.warn('Error removing GIF container:', e);
+            }
+          }
+          if (sprite.destroy) sprite.destroy();
+        });
+      });
+      
+      // Clean up any DOM elements that might be left over
+      document.querySelectorAll('img[data-layer-type]').forEach(img => {
+        // Cancel any animation frames
+        if (img._animationFrameId) {
+          cancelAnimationFrame(img._animationFrameId);
+        }
+        
+        // Clear any fade intervals
+        if (img._fadeInterval) {
+          clearInterval(img._fadeInterval);
+        }
+        
+        // Clean up event handlers
+        if (img._eventHandlers) {
+          img.removeEventListener('mousedown', img._eventHandlers.mousedown);
+          document.removeEventListener('mousemove', img._eventHandlers.mousemove);
+          document.removeEventListener('mouseup', img._eventHandlers.mouseup);
+        }
+        
+        if (img.parentNode) {
+          img.parentNode.removeChild(img);
+        }
+      });
+      
+      app.stage.removeChild(backgroundContainer);
+    }
+
+    backgroundContainer = new Container();
+    backgroundContainer.sortableChildren = true;
+    backgroundContainer.visible = true;
+    backgroundContainer.renderable = true;
+    backgroundContainer.zIndex = 50; // Set a specific zIndex to ensure proper ordering
+    app.stage.addChild(backgroundContainer);
+    
+    // Force render to check if container is visible
+    app.renderer.render(app.stage);
+    console.log("Added backgroundContainer to stage and forced render");
+
+    const mixName = window.location.hash.replace('#', '') || 'mix01';
+    console.log('Current mix:', mixName);
+    const links = ArtistLinks[mixName] || {};
+    
+    app.stage.children
+      .filter(child => child.isSocialButton)
+      .forEach(button => app.stage.removeChild(button));
+
+    const createSocialButton = (text, link, yOffset) => {
+      const button = constructTextEntry(text);
+      button.isSocialButton = true;
+      button.x = button.width / 2;
+      button.y = (window.innerHeight * 2/7) + yOffset;
+      button.zIndex = 1500; // Increased to be above all other elements
+      button.on('pointertap', () => window.open(link, '_blank'));
+      return button;
+    };
+
+    if (links.soundcloud) {
+      if (Array.isArray(links.soundcloud)) {
+        links.soundcloud.forEach((link, index) => {
+          const scButton = createSocialButton('sc', link, index * 80);
+          app.stage.addChild(scButton);
+        });
+      } else {
+        const scButton = createSocialButton('sc', links.soundcloud, 0);
+        app.stage.addChild(scButton);
+      }
+    }
+    if (links.bandcamp) {
+      const bcButton = createSocialButton('bc', links.bandcamp, 
+        Array.isArray(links.soundcloud) ? links.soundcloud.length * 80 : 80);
+      app.stage.addChild(bcButton);
+    }
+
+    if (mixName.startsWith('mix')) {
+      const PageRenderer = MixCodeFactory.getMixCode(mixName);
+      console.log('PageRenderer:', PageRenderer);
+      if (!PageRenderer) {
+        console.error(`No PageRenderer found for mix: ${mixName}`);
+        return;
+      }
+
+      try {
+        const layers = await PageRenderer.getLayers();
+        console.log('Layers:', layers);
+
+        if (!layers || layers.length === 0) {
+          console.warn(`No layers found for mix: ${mixName}`);
+          return;
+        }
+
+        for (const layer of layers) {
+          const container = new Container();
+          container.sortableChildren = true;
+          container.visible = true;
+          container.renderable = true;
+          container.alpha = 1;
+          container.zIndex = layer.zIndex;
+          console.log(`Creating layer ${layer.name} with zIndex ${layer.zIndex}`);
+          
+          const files = await getAssets(AssetData, mixName, layer.name);
+          if (files && files.length > 0) {
+            console.log(`Loaded ${files.length} valid textures for ${layer.name}`);
+            files.forEach((file, i) => {
+              console.log(`File ${i}: ${file.filename}, texture valid: ${file.texture?.valid}, dimensions: ${file.texture?.width}x${file.texture?.height}`);
+            });
+            // Render the layer
+            await layer.renderer.bind(layer)(files, container, app);
+            
+            // Only add if it has children
+            if (container.children.length > 0) {
+              backgroundContainer.addChild(container);
+              console.log(`Added layer ${layer.name} with ${container.children.length} sprites`);
+              
+              // Force sprites to be fully visible with proper dimensions
+              container.children.forEach(sprite => {
+                sprite.visible = true;
+                sprite.renderable = true;
+                
+                // Make sure sprite has proper dimensions for screen
+                if (layer.name === 'background' || layer.name === 'mist') {
+                  sprite.width = window.innerWidth;
+                  sprite.height = window.innerHeight;
+                  sprite.alpha = 0.7; // Start with decent visibility
+                }
+              });
+              
+              // Update the display
+              app.renderer.render(app.stage);
+            } else {
+              console.warn(`Layer ${layer.name} has no sprites to display`);
+            }
+          } else {
+            console.warn(`No valid files loaded for layer ${layer.name}`);
+          }
+            
+          app.renderer.render(app.stage);
+        }
+      } catch (err) {
+        console.error(`Error loading layers for ${mixName}:`, err);
+      }
+    }
+
+    app.stage.sortChildren();
+    renderContainers.menu.zIndex = 1000;
+    app.stage.addChild(renderContainers.menu);
+
+    // Add display list analysis for debugging
+    setTimeout(() => {
+      console.log("Running display list analysis...");
+      DisplayDebug.analyzeDisplayList(app);
+      
+      // Create debug panel
+      const debugPanel = document.createElement('div');
+      debugPanel.style.position = 'fixed';
+      debugPanel.style.top = '10px';
+      debugPanel.style.right = '10px';
+      debugPanel.style.zIndex = '3000';
+      debugPanel.style.backgroundColor = 'rgba(0,0,0,0.7)';
+      debugPanel.style.padding = '10px';
+      debugPanel.style.borderRadius = '5px';
+      debugPanel.style.fontFamily = 'monospace';
+      debugPanel.style.color = 'white';
+      
+      const createButton = (text, onClick) => {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.display = 'block';
+        btn.style.margin = '5px 0';
+        btn.style.padding = '5px 10px';
+        btn.style.width = '100%';
+        btn.style.backgroundColor = '#444';
+        btn.style.color = 'white';
+        btn.style.border = '1px solid #666';
+        btn.style.cursor = 'pointer';
+        btn.addEventListener('click', onClick);
+        debugPanel.appendChild(btn);
+        return btn;
+      };
+      
+      // Add toggle visibility button
+      createButton('Toggle Background', () => {
+        backgroundContainer.visible = !backgroundContainer.visible;
+        console.log(`Set backgroundContainer.visible to ${backgroundContainer.visible}`);
+        app.renderer.render(app.stage);
+      });
+      
+      // Add debug textures button
+      createButton('Debug Textures', () => {
+        window.debugTextures();
+      });
+      
+      // Add force show layers button
+      createButton('FORCE SHOW ALL LAYERS', () => {
+        window.forceShowLayers();
+      });
+      
+      // Add reload layers button
+      createButton('Reload Layers', async () => {
+        // Remove current layers
+        while (backgroundContainer.children.length > 0) {
+          backgroundContainer.removeChildAt(0);
+        }
+        
+        // Re-render layers
+        const mixName = window.location.hash.replace('#', '') || 'mix01';
+        const PageRenderer = MixCodeFactory.getMixCode(mixName);
+        
+        if (PageRenderer) {
+          const layers = await PageRenderer.getLayers();
+          if (layers) {
+            for (const layer of layers) {
+              const container = new Container();
+              container.sortableChildren = true;
+              container.visible = true;
+              container.alpha = 1;
+              container.zIndex = layer.zIndex;
+              
+              const files = await getAssets(AssetData, mixName, layer.name);
+              if (files && files.length > 0) {
+                await layer.renderer.bind(layer)(files, container, app);
+                if (container.children.length > 0) {
+                  backgroundContainer.addChild(container);
+                  console.log(`Reloaded layer ${layer.name} with ${container.children.length} sprites`);
+                }
+              }
+            }
+            app.renderer.render(app.stage);
+            console.log("Layers reloaded");
+          }
+        }
+      });
+      
+      // Add a button to test individual images
+      createButton('Test Direct WebP Load', async () => {
+        const url = 'assets/mix01/background/1_2.webp';
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = () => {
+          console.log(`Test WebP loaded directly: ${url} (${img.width}x${img.height})`);
+          const sprite = new Sprite(Texture.from(img));
+          sprite.width = 300;
+          sprite.height = 300;
+          sprite.x = window.innerWidth / 2;
+          sprite.y = window.innerHeight / 2;
+          sprite.anchor.set(0.5);
+          app.stage.addChild(sprite);
+          app.renderer.render(app.stage);
+        };
+        
+        img.onerror = () => {
+          console.error(`Test WebP failed to load: ${url}`);
+        };
+        
+        img.src = url;
+      });
+      
+      document.body.appendChild(debugPanel);
+    }, 1000);
+
+  if (!window.location.hash) {
+    window.location.hash = '#mix01';
+  }
+  renderPage();
+
+  const changeMix = async (difference) => {
+    if (scPlayer) {
+      await scPlayer.pause();
+      scPlayer = null;
+      isPlaying = false;
+      playPauseSVG.querySelector('polygon').setAttribute("points", "40,40 40,160 140,100");
+      progressBar.querySelector('div').style.width = '0%';
+    }
+
+    if (window.location.hash !== '') {
+      const mixNum = Number(window.location.hash.replace('#mix', ''));
+      if ((difference < 0 && mixNum + difference > 0) ||
+          (difference > 0 && mixNum + difference <= MIX_COUNT)) {
+        const paddedMixNum = `0000${(mixNum + difference)}`.slice(-2);
+        window.location.hash = `#mix${paddedMixNum}`;
+        renderPage();
+      }
+    }
+  };
+
+  let resizeTimeout;
+  window.onresize = () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      app.renderer.resize(window.innerWidth, window.innerHeight);
+      renderPage();
+    }, 250);
+  };
+  
+  // Add cleanup on page unload to prevent memory leaks
+  const handlePageUnload = () => {
+    console.log('Page unloading, cleaning up resources...');
+    
+    // Clean up any DOM elements with attached handlers
+    document.querySelectorAll('img[data-layer-type]').forEach(img => {
+      // Cancel any animation frames
+      if (img._animationFrameId) {
+        cancelAnimationFrame(img._animationFrameId);
+      }
+      
+      // Clear any fade intervals
+      if (img._fadeInterval) {
+        clearInterval(img._fadeInterval);
+      }
+      
+      // Remove event handlers
+      if (img._eventHandlers) {
+        img.removeEventListener('mousedown', img._eventHandlers.mousedown);
+        document.removeEventListener('mousemove', img._eventHandlers.mousemove);
+        document.removeEventListener('mouseup', img._eventHandlers.mouseup);
+      }
+      
+      // Remove from DOM
+      if (img.parentNode) {
+        img.parentNode.removeChild(img);
+      }
+    });
+    
+    // Clean up background container and all its children
+    if (backgroundContainer) {
+      backgroundContainer.children.forEach(layerContainer => {
+        if (typeof layerContainer.cleanup === 'function') {
+          layerContainer.cleanup();
+        }
+      });
+    }
+    
+    // Clean up SoundCloud
+    if (scPlayer) {
+      scPlayer.pause();
+      scPlayer = null;
+    }
+    
+    // Clear any global intervals or timeouts
+    if (resizeTimeout) {
+      clearTimeout(resizeTimeout);
+    }
+    
+    // Destroy PIXI application
+    if (app) {
+      app.destroy(true, { children: true, texture: true, baseTexture: true });
+    }
+  };
+  
+  // Add event listeners for page unload
+  window.addEventListener('beforeunload', handlePageUnload);
+  window.addEventListener('unload', handlePageUnload);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') {
+      changeMix(-1);
+    } else if (e.key === 'ArrowRight') {
+      changeMix(1);
+    }
+  });
+})();
