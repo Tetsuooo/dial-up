@@ -49,7 +49,8 @@ class DomUI {
       mixName = 'mix01',
       links = {},
       initiallyOpen = true,
-      yOffset = 100
+      yOffset = 100,
+      scale = null // Accept scale parameter
     } = options;    // Create splash panel container
     const splashPanel = document.createElement('div');
     splashPanel.className = 'dom-splash-panel';
@@ -70,15 +71,36 @@ class DomUI {
     splashImage.style.display = 'block';
     splashImage.style.pointerEvents = 'none'; // Make sure image doesn't capture clicks
     
-    // Scale to 60% like in the original code
+    // Scale to responsive size based on orientation
     splashImage.onload = () => {
       const originalWidth = splashImage.width;
-      const scaledWidth = originalWidth * 0.6;
+      
+      // Use provided scale or calculate based on orientation
+      let finalScale = scale;
+      if (finalScale === null) {
+        const isPortrait = window.innerWidth < window.innerHeight;
+        finalScale = isPortrait ? 0.75 : 0.6; // 25% bigger in portrait (0.75 vs 0.6)
+      }
+      
+      const scaledWidth = originalWidth * finalScale;
       splashImage.style.width = `${scaledWidth}px`;
+      
+      // Store the scale for later updates
+      splashPanel.dataset.currentScale = finalScale;
+      
+      // Adjust horizontal position for portrait mode
+      const isPortrait = window.innerWidth < window.innerHeight;
+      if (isPortrait) {
+        const rightOffset = window.innerWidth * 0.02; // Move only 2% of screen width to the right (reduced from 10%)
+        splashPanel.style.left = `${rightOffset}px`;
+      } else {
+        splashPanel.style.left = '0';
+      }
       
       // Initially position splash panel off-screen
       if (!initiallyOpen) {
-        splashPanel.style.transform = `translateX(-${scaledWidth}px)`;
+        const currentLeft = parseInt(splashPanel.style.left) || 0;
+        splashPanel.style.transform = `translateX(-${scaledWidth + currentLeft}px)`;
       }
       
       // Reposition social buttons based on the loaded image dimensions
@@ -93,7 +115,7 @@ class DomUI {
         }
       }
       
-      console.log(`DOM Splash panel created. Original width: ${originalWidth}, Scaled width: ${scaledWidth}`);
+      console.log(`DOM Splash panel created. Original width: ${originalWidth}, Scaled width: ${scaledWidth}, Scale: ${finalScale}, Left: ${splashPanel.style.left}`);
     };
     
     splashPanel.appendChild(splashImage);
@@ -295,8 +317,7 @@ class DomUI {
     
     console.log(`Repositioned ${button.dataset.type} button to x=${xPos}px, y=${yPos}px, fontSize=${fontSize}px`);
   }
-  
-  /**
+    /**
    * Creates the info button
    * @returns {HTMLElement} - The created info button
    */
@@ -318,8 +339,18 @@ class DomUI {
     infoButton.style.color = 'black';
     infoButton.style.pointerEvents = 'auto';
     infoButton.style.zIndex = '20';
+    infoButton.style.userSelect = 'none';
     infoButton.textContent = 'i';
     
+    // Add hover effect
+    infoButton.addEventListener('mouseenter', () => {
+      infoButton.style.backgroundColor = '#ffffff';
+    });
+    
+    infoButton.addEventListener('mouseleave', () => {
+      infoButton.style.backgroundColor = '#ffff1a';
+    });
+
     infoButton.addEventListener('click', () => {
       console.log('DOM Info button clicked.');
       this.isInfoButtonInteracted = true;
@@ -333,24 +364,89 @@ class DomUI {
         this.openSplashPanel();
       }
     });
-    
+
     this.container.appendChild(infoButton);
     this.infoButton = infoButton;
+    
+    // Scale button based on current window size
+    this.scaleInfoButton();
+    
     return infoButton;
   }
-  
-  /**
+    /**
    * Creates the navigation buttons (forward/backward)
    * @returns {Object} - Object containing the created nav buttons
    */
   createNavButtons() {
-    // Return empty objects for the nav buttons since we're using debug squares instead
-    console.log('Navigation buttons not needed - using debug squares instead');
+    console.log('Creating navigation buttons');
+
+    // Create backward button
+    const backwardButton = document.createElement('div');
+    backwardButton.className = 'dom-nav-button dom-nav-backward';
+    backwardButton.style.position = 'fixed';
+    backwardButton.style.left = '20px';
+    backwardButton.style.top = '50%';
+    backwardButton.style.transform = 'translateY(-50%)';
+    backwardButton.style.backgroundColor = '#ffff1a';
+    backwardButton.style.cursor = 'pointer';
+    backwardButton.style.textAlign = 'center';
+    backwardButton.style.fontFamily = 'Arial, sans-serif';
+    backwardButton.style.fontWeight = 'bold';
+    backwardButton.style.color = 'black';
+    backwardButton.style.pointerEvents = 'auto';
+    backwardButton.style.zIndex = '1001';
+    backwardButton.style.border = 'none';
+    backwardButton.style.borderRadius = '0';
+    backwardButton.style.userSelect = 'none';
+    backwardButton.textContent = '◀';
     
-    // Just return empty references that won't break existing code
+    // Create forward button
+    const forwardButton = document.createElement('div');
+    forwardButton.className = 'dom-nav-button dom-nav-forward';
+    forwardButton.style.position = 'fixed';
+    forwardButton.style.right = '20px';
+    forwardButton.style.top = '50%';
+    forwardButton.style.transform = 'translateY(-50%)';
+    forwardButton.style.backgroundColor = '#ffff1a';
+    forwardButton.style.cursor = 'pointer';
+    forwardButton.style.textAlign = 'center';
+    forwardButton.style.fontFamily = 'Arial, sans-serif';
+    forwardButton.style.fontWeight = 'bold';
+    forwardButton.style.color = 'black';
+    forwardButton.style.pointerEvents = 'auto';
+    forwardButton.style.zIndex = '1001';
+    forwardButton.style.border = 'none';
+    forwardButton.style.borderRadius = '0';
+    forwardButton.style.userSelect = 'none';
+    forwardButton.textContent = '▶';
+    
+    // Add hover effects
+    [backwardButton, forwardButton].forEach(button => {
+      button.addEventListener('mouseenter', () => {
+        button.style.backgroundColor = '#ffffff';
+      });
+      
+      button.addEventListener('mouseleave', () => {
+        button.style.backgroundColor = '#ffff1a';
+      });
+    });
+    
+    // Add buttons to container
+    this.container.appendChild(backwardButton);
+    this.container.appendChild(forwardButton);
+    
+    // Store references
+    this.navButtons.backward = backwardButton;
+    this.navButtons.forward = forwardButton;
+    
+    // Scale buttons based on current window size
+    this.scaleNavButtons();
+    
+    console.log('Navigation buttons created and scaled');
+    
     return {
-      backwardButton: { addEventListener: () => {} },
-      forwardButton: { addEventListener: () => {} }
+      backwardButton: backwardButton,
+      forwardButton: forwardButton
     };
   }
   
@@ -398,8 +494,9 @@ class DomUI {
     const splashImage = this.splashPanel.querySelector('img');
     if (splashImage) {
       const scaledWidth = splashImage.offsetWidth;
-      this.splashPanel.style.transform = `translateX(-${scaledWidth}px)`;
-      console.log(`Closing splash panel with transform: translateX(-${scaledWidth}px)`);
+      const currentLeft = parseInt(this.splashPanel.style.left) || 0;
+      this.splashPanel.style.transform = `translateX(-${scaledWidth + currentLeft}px)`;
+      console.log(`Closing splash panel with transform: translateX(-${scaledWidth + currentLeft}px)`);
     } else {
       // Fallback if image isn't loaded yet
       this.splashPanel.style.transform = 'translateX(-100%)';
@@ -426,25 +523,195 @@ class DomUI {
     
     return isOpen;
   }
-  
-  /**
-   * Handler for window resize
-   * This ensures buttons stay properly positioned when window size changes
+    /**
+   * Scales navigation buttons based on window size
    */
-  handleResize() {
+  scaleNavButtons() {
+    if (!this.navButtons.backward || !this.navButtons.forward) return;
+    
+    const baseSize = 40;
+    const scale = this.getUIScale();
+    const size = Math.max(30, Math.round(baseSize * scale));
+    const fontSize = Math.max(16, Math.round(size * 0.6));
+    
+    [this.navButtons.backward, this.navButtons.forward].forEach(button => {
+      button.style.width = `${size}px`;
+      button.style.height = `${size}px`;
+      button.style.lineHeight = `${size}px`;
+      button.style.fontSize = `${fontSize}px`;
+    });
+    
+    console.log(`Navigation buttons scaled to ${size}px with font size ${fontSize}px`);
+  }
+
+  /**
+   * Scales info button based on window size
+   */
+  scaleInfoButton() {
+    if (!this.infoButton) return;
+    
+    const baseSize = 40;
+    const scale = this.getUIScale();
+    const size = Math.max(30, Math.round(baseSize * scale));
+    const fontSize = Math.max(16, Math.round(size * 0.75));
+    
+    this.infoButton.style.width = `${size}px`;
+    this.infoButton.style.height = `${size}px`;
+    this.infoButton.style.lineHeight = `${size}px`;
+    this.infoButton.style.fontSize = `${fontSize}px`;
+    
+    console.log(`Info button scaled to ${size}px with font size ${fontSize}px`);
+  }
+
+  /**
+   * Updates the splash panel scale based on orientation
+   * @param {number} newScale - The new scale factor to apply
+   */
+  updateSplashScale(newScale) {
     if (!this.splashPanel) return;
     
     const splashImage = this.splashPanel.querySelector('img');
-    const buttonContainer = this.splashPanel.querySelector('.social-buttons-container');
+    if (!splashImage) return;
     
-    if (splashImage && buttonContainer) {
-      const buttons = buttonContainer.querySelectorAll('.social-button');
-      buttons.forEach(button => {
-        this.repositionSocialButton(button, splashImage);
-      });
+    // Get original image dimensions
+    const img = new Image();
+    img.src = splashImage.src;
+    
+    img.onload = () => {
+      const originalWidth = img.naturalWidth;
+      const scaledWidth = originalWidth * newScale;
+      
+      // Update image size
+      splashImage.style.width = `${scaledWidth}px`;
+      
+      // Store the new scale
+      this.splashPanel.dataset.currentScale = newScale;
+      
+      // Adjust horizontal position for portrait mode
+      const isPortrait = window.innerWidth < window.innerHeight;
+      if (isPortrait) {
+        const rightOffset = window.innerWidth * 0.02; // Move only 2% of screen width to the right (reduced from 10%)
+        this.splashPanel.style.left = `${rightOffset}px`;
+      } else {
+        this.splashPanel.style.left = '0';
+      }
+      
+      // If panel is closed, update the transform position
+      if (!this.isSplashPanelOpen()) {
+        const currentLeft = parseInt(this.splashPanel.style.left) || 0;
+        this.splashPanel.style.transform = `translateX(-${scaledWidth + currentLeft}px)`;
+      }
+      
+      // Reposition social buttons
+      const buttonContainer = this.splashPanel.querySelector('.social-buttons-container');
+      if (buttonContainer) {
+        const buttons = buttonContainer.querySelectorAll('.social-button');
+        buttons.forEach(button => {
+          this.repositionSocialButton(button, splashImage);
+        });
+      }
+      
+      console.log(`Splash panel scale updated to ${newScale} (${scaledWidth}px width), Left: ${this.splashPanel.style.left}`);
+    };
+  }
+
+  /**
+   * Scales splash panel for better mobile/vertical screen support
+   */
+  scaleSplashPanel() {
+    if (!this.splashPanel) return;
+    
+    const splashImage = this.splashPanel.querySelector('img');
+    if (!splashImage) return;
+    
+    // Determine orientation and set appropriate scale
+    const isPortrait = window.innerWidth < window.innerHeight;
+    const newScale = isPortrait ? 0.75 : 0.6; // 25% bigger in portrait (0.75 vs 0.6)
+    
+    // Update using the updateSplashScale method
+    this.updateSplashScale(newScale);
+  }
+
+  /**
+   * Calculates UI scale factor based on window size
+   * @returns {number} Scale factor between 0.8 and 1.4
+   */
+  getUIScale() {
+    const baseWidth = 1920;
+    const baseHeight = 1080;
+    const currentWidth = window.innerWidth;
+    const currentHeight = window.innerHeight;
+    
+    // Calculate scale based on smaller dimension to ensure buttons don't get too big
+    const widthScale = currentWidth / baseWidth;
+    const heightScale = currentHeight / baseHeight;
+    const scale = Math.min(widthScale, heightScale);
+    
+    // Clamp scale between 0.8 and 1.4
+    return Math.max(0.8, Math.min(1.4, scale));
+  }  /**
+   * Handler for window resize
+   * This ensures all UI elements stay properly positioned and scaled when window size changes
+   */
+  handleResize() {
+    console.log('Handling resize for DOM UI elements');
+    
+    // Scale navigation buttons
+    this.scaleNavButtons();
+    
+    // Scale info button
+    this.scaleInfoButton();
+    
+    // Scale splash panel for mobile/vertical screens
+    this.scaleSplashPanel();
+    
+    // Scale external UI elements (play button, progress bar)
+    this.scaleExternalUIElements();
+    
+    // Reposition social buttons if splash panel exists
+    if (this.splashPanel) {
+      const splashImage = this.splashPanel.querySelector('img');
+      const buttonContainer = this.splashPanel.querySelector('.social-buttons-container');
+      
+      if (splashImage && buttonContainer) {
+        const buttons = buttonContainer.querySelectorAll('.social-button');
+        buttons.forEach(button => {
+          this.repositionSocialButton(button, splashImage);
+        });
+      }
     }
   }
-  
+    /**
+   * Scales external UI elements (like play button and progress bar)
+   * This method can be called from outside the class to scale elements not managed by DOM UI
+   */
+  scaleExternalUIElements() {
+    // Scale play/pause button
+    const playButton = document.querySelector('svg[style*="position"][style*="fixed"]');
+    if (playButton) {
+      const baseSize = 225;
+      const scale = this.getUIScale();
+      const size = Math.max(150, Math.round(baseSize * scale));
+      
+      playButton.style.width = `${size}px`;
+      playButton.style.height = `${size}px`;
+      
+      console.log(`Play button scaled to ${size}px`);
+    }
+    
+    // Scale progress bar height
+    const progressBar = document.querySelector('div[style*="position: fixed"][style*="bottom: 0"]');
+    if (progressBar) {
+      const baseHeight = 20;
+      const scale = this.getUIScale();
+      const height = Math.max(15, Math.round(baseHeight * scale));
+      
+      progressBar.style.height = `${height}px`;
+      
+      console.log(`Progress bar scaled to ${height}px height`);
+    }
+  }
+
   /**
    * Cleans up all DOM UI elements
    */

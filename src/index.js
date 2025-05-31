@@ -450,6 +450,70 @@ const getAssets = async (assetsData, mix, layer) => {
   navButtons.forwardButton.addEventListener('click', () => changeMix(1));
   navButtons.backwardButton.addEventListener('click', () => changeMix(-1));
 
+  // Create bottom-right mix navigation buttons
+  const createBottomRightNavButtons = () => {
+    const navContainer = document.createElement('div');
+    navContainer.style.position = 'fixed';
+    navContainer.style.bottom = '40px'; // Moved up from 30px
+    navContainer.style.right = '20px';
+    navContainer.style.display = 'flex';
+    navContainer.style.flexDirection = 'column'; // Stack vertically
+    navContainer.style.gap = '10px'; // Increased from 5px to 10px
+    navContainer.style.zIndex = '2002';
+    
+    // Next mix button (on top)
+    const nextButton = document.createElement('button');
+    nextButton.textContent = '>';
+    nextButton.style.width = '50px';
+    nextButton.style.height = '50px';
+    nextButton.style.backgroundColor = '#ffff1a';
+    nextButton.style.border = 'none';
+    nextButton.style.cursor = 'pointer';
+    nextButton.style.fontSize = '28px'; // Increased from 24px to 28px
+    nextButton.style.fontWeight = 'bold';
+    nextButton.style.color = 'black';
+    nextButton.style.borderRadius = '0';
+    nextButton.style.userSelect = 'none';
+    
+    // Previous mix button (on bottom)
+    const prevButton = document.createElement('button');
+    prevButton.textContent = '<';
+    prevButton.style.width = '50px';
+    prevButton.style.height = '50px';
+    prevButton.style.backgroundColor = '#ffff1a';
+    prevButton.style.border = 'none';
+    prevButton.style.cursor = 'pointer';
+    prevButton.style.fontSize = '28px'; // Increased from 24px to 28px
+    prevButton.style.fontWeight = 'bold';
+    prevButton.style.color = 'black';
+    prevButton.style.borderRadius = '0';
+    prevButton.style.userSelect = 'none';
+    
+    // Add hover effects
+    [prevButton, nextButton].forEach(button => {
+      button.addEventListener('mouseenter', () => {
+        button.style.backgroundColor = '#ffffff';
+      });
+      
+      button.addEventListener('mouseleave', () => {
+        button.style.backgroundColor = '#ffff1a';
+      });
+    });
+    
+    // Add click handlers
+    prevButton.addEventListener('click', () => changeMix(-1));
+    nextButton.addEventListener('click', () => changeMix(1));
+    
+    // Add next button first (top), then prev button (bottom)
+    navContainer.appendChild(nextButton);
+    navContainer.appendChild(prevButton);
+    document.body.appendChild(navContainer);
+    
+    return { container: navContainer, prevButton, nextButton };
+  };
+
+  const bottomRightNav = createBottomRightNavButtons();
+
   // Add variables needed for SoundCloud
   const svgNS = "http://www.w3.org/2000/svg";
   let scPlayer = null;
@@ -473,19 +537,69 @@ const getAssets = async (assetsData, mix, layer) => {
     progress.style.backgroundColor = 'yellow';
     progressBar.appendChild(progress);
 
-    // Click handler for seeking
-    progressBar.addEventListener('click', async (e) => {
+    let isDragging = false;
+    let lastUpdateTime = 0;
+
+    // Function to seek to position
+    const seekToPosition = (e) => {
       if (!scPlayer) return;
       const rect = progressBar.getBoundingClientRect();
-      const pos = (e.clientX - rect.left) / rect.width;
+      const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       scPlayer.getDuration((duration) => {
         scPlayer.seekTo(duration * pos);
       });
+    };
+
+    // Function to update visual progress (for dragging feedback)
+    const updateVisualProgress = (e) => {
+      const rect = progressBar.getBoundingClientRect();
+      const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      progress.style.width = `${pos * 100}%`;
+    };
+
+    // Mouse down - start dragging
+    progressBar.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      progressBar.style.cursor = 'grabbing';
+      updateVisualProgress(e); // Immediate visual feedback
+      seekToPosition(e);
+      e.preventDefault();
     });
 
-    // Update progress periodically
+    // Mouse move - drag to seek
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      // Always update visual progress immediately for smooth feedback
+      updateVisualProgress(e);
+      
+      // Throttle actual seeking to avoid overwhelming the SoundCloud API
+      const now = Date.now();
+      if (now - lastUpdateTime > 50) // Update max every 50ms
+        seekToPosition(e);
+        lastUpdateTime = now;
+      e.preventDefault();
+    });
+
+    // Mouse up - stop dragging
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        progressBar.style.cursor = 'pointer';
+      }
+    });
+
+    // Click handler for non-drag clicks
+    progressBar.addEventListener('click', (e) => {
+      if (!isDragging) {
+        updateVisualProgress(e); // Immediate visual feedback
+        seekToPosition(e);
+      }
+    });
+
+    // Update progress periodically (only when not dragging)
     setInterval(() => {
-      if (scPlayer && isPlaying) {
+      if (scPlayer && isPlaying && !isDragging) {
         scPlayer.getPosition((position) => {
           scPlayer.getDuration((duration) => {
             const percentage = (position / duration) * 100;
@@ -508,32 +622,58 @@ const getAssets = async (assetsData, mix, layer) => {
     svg.style.position = "fixed";
     svg.style.bottom = "10px";  // Changed from 30px to 20px (10px lower)
     svg.style.left = "10px";    // Changed from 30px to 20px (10px to the left)
-    svg.style.width = "225px";  // Keep size the same
-    svg.style.height = "225px"; // Keep size the same
+    svg.style.width = "180px";  // Reduced from 180px (smaller)
+    svg.style.height = "180px"; // Reduced from 180px (smaller)
     svg.style.overflow = "visible";
-    svg.style.pointerEvents = "auto";
+    svg.style.pointerEvents = "none"; // Disable pointer events on the SVG container
     svg.style.zIndex = "2000";
-    svg.style.cursor = "pointer";
 
     // Create play triangle
     const playShape = document.createElementNS(svgNS, "polygon");
     // Adjusted coordinates to stay within viewBox bounds
     playShape.setAttribute("points", "40,40 40,160 140,100");
     playShape.setAttribute("fill", "yellow");
+    playShape.style.cursor = "pointer"; // Only the shape is clickable
+    playShape.style.pointerEvents = "auto"; // Enable pointer events only on the shape
     svg.appendChild(playShape);
 
-    // Add click handler for play/pause toggle
-    svg.addEventListener('click', () => {
+    // Create invisible clickable area for pause button (covers the gap between rectangles)
+    const pauseClickArea = document.createElementNS(svgNS, "rect");
+    pauseClickArea.setAttribute("x", "40");
+    pauseClickArea.setAttribute("y", "40");
+    pauseClickArea.setAttribute("width", "110"); // Covers both rectangles and gap
+    pauseClickArea.setAttribute("height", "120");
+    pauseClickArea.setAttribute("fill", "transparent");
+    pauseClickArea.style.cursor = "pointer";
+    pauseClickArea.style.pointerEvents = "none"; // Initially disabled
+    pauseClickArea.style.display = "none"; // Initially hidden
+    svg.appendChild(pauseClickArea);
+
+    // Add click handler for play/pause toggle - now only on the shape
+    const handleClick = () => {
       const isPlayButton = playShape.getAttribute("points") === "40,40 40,160 140,100";
       if (isPlayButton) {
         // Switch to pause symbol - rectangles moved closer together
         playShape.setAttribute("points", "40,40 75,40 75,160 40,160, 40,40 115,40 150,40 150,160 115,160 115,40");
+        // Enable and show the pause click area
+        pauseClickArea.style.pointerEvents = "auto";
+        pauseClickArea.style.display = "block";
+        // Disable the main shape's pointer events since we want the area to handle it
+        playShape.style.pointerEvents = "none";
       } else {
         // Switch back to play triangle
         playShape.setAttribute("points", "40,40 40,160 140,100");
+        // Disable and hide the pause click area
+        pauseClickArea.style.pointerEvents = "none";
+        pauseClickArea.style.display = "none";
+        // Re-enable the main shape's pointer events
+        playShape.style.pointerEvents = "auto";
       }
       togglePlay();
-    });
+    };
+
+    playShape.addEventListener('click', handleClick);
+    pauseClickArea.addEventListener('click', handleClick);
 
     return svg;
   };
@@ -806,21 +946,26 @@ Object.keys(animationParams).forEach(layerName => {
       
       console.log(`Splash sprite created. Width: ${splashSprite.width}, Height: ${splashSprite.height}, Texture Valid: ${splashSprite.texture.valid}`);
 
-      // Scale the splash sprite to 60% of its original size (40% smaller)
-      splashSprite.scale.set(0.6);
-      console.log(`Splash sprite scaled to 60%. New dimensions: ${splashSprite.width}x${splashSprite.height}`);
+      // Determine orientation and set appropriate scale
+      const isPortrait = window.innerWidth < window.innerHeight;
+      const splashScale = isPortrait ? 1.2 : 0.6; // 2x size (1.2) in portrait, 0.6 in landscape
+      
+      // Scale the splash sprite based on orientation
+      splashSprite.scale.set(splashScale);
+      console.log(`Splash sprite scaled to ${splashScale * 100}% for ${isPortrait ? 'portrait' : 'landscape'} mode. New dimensions: ${splashSprite.width}x${splashSprite.height}`);
 
       // ---- Create DOM Splash Panel ----
       // Use the already defined splashAssetUrl
       console.log('Creating DOM splash panel with image:', splashAssetUrl);
       
-      // Create the DOM splash panel
+      // Create the DOM splash panel with orientation-aware scaling
       domUI.createSplashPanel({
         imageUrl: splashAssetUrl,
         mixName: mixName,
         links: links,
         initiallyOpen: true,
-        yOffset: 100
+        yOffset: 100,
+        scale: splashScale // Pass the scale to DOM UI
       });
       
       console.log('DOM Splash panel created and added to document.');
@@ -1052,6 +1197,19 @@ Object.keys(animationParams).forEach(layerName => {
       // Handle resizing of DOM UI elements
       if (domUI) {
         domUI.handleResize();
+      }
+      
+      // Scale bottom-right navigation buttons
+      if (bottomRightNav) {
+        const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+        const buttonSize = Math.max(40, Math.round(50 * Math.max(0.8, Math.min(1.2, scale))));
+        const fontSize = Math.max(20, Math.round(28 * Math.max(0.8, Math.min(1.2, scale)))); // Updated to scale the larger font size (28px)
+        
+        [bottomRightNav.prevButton, bottomRightNav.nextButton].forEach(button => {
+          button.style.width = `${buttonSize}px`;
+          button.style.height = `${buttonSize}px`;
+          button.style.fontSize = `${fontSize}px`;
+        });
       }
     }, 250);
   };
