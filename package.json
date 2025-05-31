@@ -1,9 +1,9 @@
 {
   "name": "dial-up",
   "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "build": "webpack --config webpack.config.js",
+  "private": true,  "scripts": {
+    "build": "node build.js",
+    "build-webpack": "webpack --config webpack.js --stats=normal",
     "dev": "webpack-dev-server --config webpack.dev.js",
     "start": "webpack-dev-server --config webpack.dev.js"
   },

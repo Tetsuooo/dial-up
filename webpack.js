@@ -2,13 +2,17 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
+  mode: 'production',
   entry: './src/index.js',
   experiments: {
     topLevelAwait: true,
     outputModule: true
   },
   output: {
-    module: true
+    path: path.resolve(__dirname, 'docs'),
+    filename: 'bundle.js',
+    module: true,
+    clean: true
   },
   resolve: {
     alias: {
