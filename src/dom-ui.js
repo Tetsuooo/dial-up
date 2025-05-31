@@ -51,11 +51,18 @@ class DomUI {
       initiallyOpen = true,
       yOffset = 100,
       scale = null // Accept scale parameter
-    } = options;    // Create splash panel container
+    } = options;
+    
+    // Create splash panel container
     const splashPanel = document.createElement('div');
     splashPanel.className = 'dom-splash-panel';
     splashPanel.style.position = 'absolute';
-    splashPanel.style.top = `${yOffset}px`;
+    
+    // Adjust yOffset for portrait mode to position lower
+    const isPortrait = window.innerWidth < window.innerHeight;
+    const adjustedYOffset = isPortrait ? yOffset + 80 : yOffset; // 80px lower in portrait
+    splashPanel.style.top = `${adjustedYOffset}px`;
+    
     splashPanel.style.left = '0';
     splashPanel.style.pointerEvents = 'none'; // Make the splash panel non-interactive
     splashPanel.style.transition = 'transform 0.5s ease-in-out';
@@ -325,7 +332,12 @@ class DomUI {
     const infoButton = document.createElement('div');
     infoButton.className = 'dom-info-button';
     infoButton.style.position = 'absolute';
-    infoButton.style.top = '50px';
+    
+    // Position info button lower in portrait mode
+    const isPortrait = window.innerWidth < window.innerHeight;
+    const topPosition = isPortrait ? '130px' : '50px'; // 80px lower in portrait
+    infoButton.style.top = topPosition;
+    
     infoButton.style.left = '20px';
     infoButton.style.width = '40px';
     infoButton.style.height = '40px';
@@ -655,6 +667,21 @@ class DomUI {
    */
   handleResize() {
     console.log('Handling resize for DOM UI elements');
+    
+    // Update info button position for orientation changes
+    if (this.infoButton) {
+      const isPortrait = window.innerWidth < window.innerHeight;
+      const topPosition = isPortrait ? '130px' : '50px';
+      this.infoButton.style.top = topPosition;
+    }
+    
+    // Update splash panel position for orientation changes
+    if (this.splashPanel) {
+      const isPortrait = window.innerWidth < window.innerHeight;
+      const baseYOffset = 100; // Assuming default yOffset
+      const adjustedYOffset = isPortrait ? baseYOffset + 80 : baseYOffset;
+      this.splashPanel.style.top = `${adjustedYOffset}px`;
+    }
     
     // Scale navigation buttons
     this.scaleNavButtons();
