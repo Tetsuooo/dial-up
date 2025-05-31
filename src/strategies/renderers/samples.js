@@ -1,5 +1,4 @@
 import _ from 'lodash';
-import LayerDebug from '~/layer-debug';
 
 // Bell curve random function for proper image sizing
 function randn_bm(min, max, skew) {
@@ -274,56 +273,6 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
   // Store reference to DOM container for cleanup
   container._domElement = samplesContainer;
   container._activeImages = activeImages;
-  
-  // Set up layer visibility toggle via debug panel
-  LayerDebug.onLayerToggle('samples', (isVisible) => {
-    if (isVisible === 'reload') {
-      // Special case: reload the layer
-      console.log('Reloading samples layer');
-      
-      // Clear all intervals
-      container._intervals.forEach(interval => clearInterval(interval));
-      
-      // Remove all images
-      while (samplesContainer.firstChild) {
-        samplesContainer.removeChild(samplesContainer.firstChild);
-      }
-      
-      // Reset tracking arrays
-      activeImages.length = 0;
-      sequenceIndex = 0;
-      displayedFileIds.clear();
-      
-      // Reshuffle files
-      fileSequence = shuffleArray(validFiles);
-      
-      // Re-add initial images - just ONE to start
-      if (validFiles.length > 0) {
-        addNextImage();
-        console.log("Reloaded with 1 initial sample");
-      }
-      
-      // Set up new intervals with 4-6 seconds for adding
-      const newAddInterval = setInterval(() => {
-        if (activeImages.length < 10 && Math.random() < 0.8) {
-          addNextImage();
-        }
-      }, 4000 + Math.random() * 2000);
-      
-      // Set up new interval for removing, only when we have 5+ images
-      const newRemoveInterval = setInterval(() => {
-        if (activeImages.length > 5 && Math.random() < 0.3) {
-          removeRandomImage();
-        }
-      }, 5000 + Math.random() * 3000);
-      
-      // Update interval references
-      container._intervals = [newAddInterval, newRemoveInterval];
-    } else {
-      // Regular visibility toggle
-      samplesContainer.style.display = isVisible ? 'block' : 'none';
-    }
-  });
   
   // Clean up on page change or unload
   const cleanup = () => {

@@ -14,10 +14,7 @@ import MixUrls from './mixurls.json';
 import ArtistLinks from './artist-links.json';
 import _ from 'lodash';
 import Utils from '~/utils';
-import DisplayDebug from './display-debug.js';
-import LayerDebug from './layer-debug.js';
-import LayerInspector from './layer-inspector.js';
-import forceShowLayers from './layer-force.js';
+
 import { SplashPainter } from './strategies/painters/splash.js';
 import DomUI from './dom-ui.js';
 
@@ -328,8 +325,7 @@ const getAssets = async (assetsData, mix, layer) => {
     crossOrigin: 'anonymous'
   });
   
-  // Make forceShowLayers available globally for debugging
-  window.forceShowLayers = forceShowLayers;
+
 
   // UI related variables
   let isInfoButtonInteracted = false;
@@ -339,16 +335,7 @@ const getAssets = async (assetsData, mix, layer) => {
   // Create DOM UI instance
   let domUI = new DomUI();
 
-  // Add keyboard shortcut for toggling debug panel (Ctrl+D)
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'd') {
-      e.preventDefault();
-      LayerDebug.toggle();
-    } else if (e.ctrlKey && e.key === 'i') {
-      e.preventDefault();
-      LayerInspector.toggle();
-    }
-  });
+
 
   // Use a simpler approach for GIF updates
   app.updateGifSprites = () => {
@@ -409,11 +396,7 @@ const getAssets = async (assetsData, mix, layer) => {
     }
   }
 
-  // Initialize the layer debug panel
-  LayerDebug.init();
-  
-  // Initialize the layer inspector (hidden by default)
-  LayerInspector.init();
+
 
   // ---------------------------------------------------------------------
   // FULLSCREEN CSS & APP CONFIG
@@ -1021,85 +1004,8 @@ Object.keys(animationParams).forEach(layerName => {
     renderContainers.menu.zIndex = 1000;
     app.stage.addChild(renderContainers.menu);
 
-    // Add display list analysis for debugging
-    setTimeout(() => {
-      console.log("Running display list analysis...");
-      DisplayDebug.analyzeDisplayList(app);
-    }, 1000);
-  };
 
-  // Debug function to create visible navigation squares
-  function createDebugNavigationSquares() {
-    console.log("Creating debug navigation squares");
-    
-    // Remove any existing debug squares first
-    document.querySelectorAll('.debug-nav-square').forEach(el => {
-      if (el && el.parentNode) {
-        el.parentNode.removeChild(el);
-      }
-    });
-    
-    // Create right (next/forward) square - now positioned higher with more space
-    const rightSquare = document.createElement('div');
-    rightSquare.className = 'debug-nav-square next';
-    rightSquare.innerHTML = '<span style="font-size: 38px; font-weight: 900;">&gt;</span>'; // Even thicker symbol
-    rightSquare.style.cssText = `
-      position: fixed;
-      right: 20px;
-      bottom: 100px;
-      width: 60px;
-      height: 60px;
-      background-color: yellow;
-      color: black;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 999999;
-    `;
-    
-    // Create left (prev/backward) square - position unchanged at bottom
-    const leftSquare = document.createElement('div');
-    leftSquare.className = 'debug-nav-square prev';
-    leftSquare.innerHTML = '<span style="font-size: 38px; font-weight: 900;">&lt;</span>'; // Even thicker symbol
-    leftSquare.style.cssText = `
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      width: 60px;
-      height: 60px;
-      background-color: yellow;
-      color: black;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 999999;
-    `;
-    
-    // Add click handlers
-    leftSquare.addEventListener('click', () => {
-      console.log("Debug left square clicked");
-      changeMix(-1);
-    });
-    
-    rightSquare.addEventListener('click', () => {
-      console.log("Debug right square clicked");
-      changeMix(1);
-    });
-    
-    // Add to body
-    document.body.appendChild(rightSquare); // Add next button first (on top)
-    document.body.appendChild(leftSquare);  // Add prev button second (on bottom)
-    
-    // Make globally available
-    window.debugSquares = {
-      left: leftSquare,
-      right: rightSquare
-    };
-    
-    return { left: leftSquare, right: rightSquare };
-  }
+  };
 
   if (!window.location.hash) {
     window.location.hash = '#mix01';
@@ -1112,59 +1018,9 @@ Object.keys(animationParams).forEach(layerName => {
     renderPage();
   });
 
-  // INIT: Create the debug squares initially
-  createDebugNavigationSquares();
-  
-  // Set up a mutation observer to ensure our squares are always present
-  const bodyObserver = new MutationObserver(() => {
-    if (!document.querySelector('.debug-nav-square')) {
-      console.log("Debug squares not found, recreating");
-      createDebugNavigationSquares();
-    }
-  });
-  
-  // Start observing the document body for changes
-  bodyObserver.observe(document.body, { 
-    childList: true, 
-    subtree: true 
-  });
-  
-  // Call createDebugNavigationSquares periodically as a safeguard
-  setInterval(() => {
-    if (!document.querySelector('.debug-nav-square')) {
-      console.log("Debug squares disappeared, recreating them");
-      createDebugNavigationSquares();
-    }
-  }, 2000);
-  
-  // Add direct event listeners to ensure squares exist after hash changes
-  window.addEventListener('hashchange', () => {
-    console.log('Hash changed, checking for debug squares');
-    setTimeout(() => {
-      if (!document.querySelector('.debug-nav-square')) {
-        console.log("Debug squares not found after hash change, recreating");
-        createDebugNavigationSquares();
-      }
-    }, 500);
-  });
 
-  // Debug function to check layer visibility
-  window.checkLayerVisibility = () => {
-    console.log("======= LAYER VISIBILITY CHECK =======");
-    if (!backgroundContainer) {
-      console.error("Background container not found");
-      return;
-    }
-    
-    console.log(`Background container: visible=${backgroundContainer.visible}, alpha=${backgroundContainer.alpha}, children=${backgroundContainer.children.length}`);
-    backgroundContainer.children.forEach((layerContainer, index) => {
-      console.log(`Layer ${index}: visible=${layerContainer.visible}, alpha=${layerContainer.alpha}, children=${layerContainer.children.length}`);
-      
-      layerContainer.children.forEach((sprite, spriteIndex) => {
-        console.log(`  Sprite ${spriteIndex}: visible=${sprite.visible}, alpha=${sprite.alpha}, texture valid=${sprite.texture?.valid}`);
-      });
-    });
-  };
+
+
 
   const changeMix = async (difference) => {
     if (scPlayer) {
@@ -1205,9 +1061,6 @@ Object.keys(animationParams).forEach(layerName => {
       changeMix(-1);
     } else if (e.key === 'ArrowRight') {
       changeMix(1);
-    } else if (e.key === 'v') {
-      // Add a keyboard shortcut to check layer visibility
-      window.checkLayerVisibility();
     }
   });
 

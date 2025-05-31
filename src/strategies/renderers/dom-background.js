@@ -7,7 +7,6 @@
  * - Varied blend modes for mist layers
  * - Proper z-ordering without clipping at viewport edges
  */
-import LayerDebug from '~/layer-debug';
 
 // Helper function for generating a value from a normal distribution (bell curve)
 function randn_bm(min, max, skew) {
@@ -445,47 +444,7 @@ export const createDomLayerRenderer = (layerType) => {
         }
       }, i * 500); // Stagger by 500ms each to ensure distinct appearances
     }
-    
-    // Set up layer visibility toggle via debug panel
-    LayerDebug.onLayerToggle(layerType, (isVisible) => {
-      if (isVisible === 'reload') {
-        // Special case: reload the layer
-        console.log(`Reloading ${layerType} layer`);
-        
-        // Clear all animation frames
-        animationFrames.forEach(frameId => cancelAnimationFrame(frameId));
-        animationFrames.length = 0;
-        
-        // Remove all children
-        while (layerContainer.firstChild) {
-          layerContainer.removeChild(layerContainer.firstChild);
-        }
-        
-        // Re-add elements with fresh animations
-        activeElements.length = 0;
-        
-        // Reshuffle files for variety
-        const reshuffledFiles = shuffleArray(validFiles);
-        
-        // Reset file pool to avoid duplication issues
-        filePool.length = 0;
-        filePool.push(...reshuffledFiles.slice(maxElements));
-          // Re-add exactly 3 elements with staggered start
-        for (let i = 0; i < Math.min(maxElements, reshuffledFiles.length); i++) {
-          setTimeout(() => {
-            if (i < reshuffledFiles.length) {
-              addLayerElement(reshuffledFiles[i]);
-              console.log(`Re-added ${layerType} element ${i+1}/${maxElements} after reload`);
-            }
-          }, i * 500); // Use 500ms stagger for consistency with initial loading
-        }
-      } else {
-        // Regular visibility toggle
-        layerContainer.style.display = isVisible ? 'block' : 'none';
-      }
-    });
-    
-    // Set up cleanup function for later
+      // Set up cleanup function for later
     const cleanup = () => {
       // Cancel all animation frames
       animationFrames.forEach(frameId => cancelAnimationFrame(frameId));
