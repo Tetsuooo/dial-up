@@ -620,8 +620,8 @@ const getAssets = async (assetsData, mix, layer) => {
     const svg = document.createElementNS(svgNS, "svg");
     svg.setAttribute("viewBox", "0 0 200 200");
     svg.style.position = "fixed";
-    svg.style.bottom = "10px";  // Changed from 30px to 20px (10px lower)
-    svg.style.left = "10px";    // Changed from 30px to 20px (10px to the left)
+    svg.style.bottom = "5px";   // Moved down from 10px to 5px
+    svg.style.left = "-10px";    // Moved further left from 5px to -5px
     svg.style.width = "180px";  // Reduced from 180px (smaller)
     svg.style.height = "180px"; // Reduced from 180px (smaller)
     svg.style.overflow = "visible";
