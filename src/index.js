@@ -20,7 +20,7 @@ import DomUI from './dom-ui.js';
 
 // Initialize Assets with proper base path
 await Assets.init({
-  basePath: 'http://localhost:3000'
+  basePath: window.location.origin
 });
 
 // Fallback WebP loader that works reliably
