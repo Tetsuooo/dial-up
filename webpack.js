@@ -38,7 +38,7 @@ module.exports = {
               }]
             ],
             plugins: [
-              '@babel/plugin-transform-runtime'
+              ['@babel/plugin-transform-runtime', { regenerator: false }]
             ]
           }
         },
@@ -48,7 +48,8 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: './src/index.html'
+      template: './src/index.html',
+      scriptLoading: 'module'
     })
   ]
 };
