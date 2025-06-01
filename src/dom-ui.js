@@ -32,7 +32,6 @@ class DomUI {
     this.splashPanelHoverCloseTimeoutId = null;
     
     document.body.appendChild(this.container);
-    console.log('DOM UI container created and added to the document body');
     
     // Add resize event listener
     window.addEventListener('resize', this.handleResize.bind(this));
@@ -64,7 +63,7 @@ class DomUI {
     splashPanel.style.top = `${adjustedYOffset}px`;
     
     splashPanel.style.left = '0';
-    splashPanel.style.pointerEvents = 'none'; // Make the splash panel non-interactive
+    splashPanel.style.pointerEvents = 'auto'; // Allow pointer events to pass through to children
     splashPanel.style.transition = 'transform 0.5s ease-in-out';
     splashPanel.style.zIndex = '10';
     
@@ -77,7 +76,14 @@ class DomUI {
     splashImage.style.height = 'auto';
     splashImage.style.display = 'block';
     splashImage.style.pointerEvents = 'none'; // Make sure image doesn't capture clicks
-    
+    splashImage.style.userSelect = 'none'; // Prevent text selection
+    splashImage.style.webkitUserSelect = 'none'; // Webkit browsers
+    splashImage.style.mozUserSelect = 'none'; // Firefox
+    splashImage.style.msUserSelect = 'none'; // IE/Edge
+    splashImage.style.webkitUserDrag = 'none'; // Prevent dragging in webkit
+    splashImage.style.webkitTouchCallout = 'none'; // Prevent callout on iOS
+    splashImage.draggable = false; // Prevent HTML5 drag
+
     // Scale to responsive size based on orientation
     splashImage.onload = () => {
       const originalWidth = splashImage.width;
@@ -121,8 +127,6 @@ class DomUI {
           });
         }
       }
-      
-      console.log(`DOM Splash panel created. Original width: ${originalWidth}, Scaled width: ${scaledWidth}, Scale: ${finalScale}, Left: ${splashPanel.style.left}`);
     };
     
     splashPanel.appendChild(splashImage);
@@ -154,18 +158,15 @@ class DomUI {
     // Set up event listeners for splash panel hover
     splashPanel.addEventListener('mouseenter', () => {
       if (this.isInfoButtonInteracted) {
-        console.log('Hover over DOM splash panel, cancelling auto-close.');
         clearTimeout(this.splashPanelHoverCloseTimeoutId);
       }
     });
     
     splashPanel.addEventListener('mouseleave', () => {
       if (this.isInfoButtonInteracted && this.isSplashPanelOpen()) {
-        console.log('Hover out from DOM splash panel, scheduling auto-close.');
         clearTimeout(this.splashPanelHoverCloseTimeoutId);
         this.splashPanelHoverCloseTimeoutId = setTimeout(() => {
           if (this.isInfoButtonInteracted) {
-            console.log('Auto-closing DOM splash panel due to hover out.');
             this.closeSplashPanel();
           }
         }, 5000);
@@ -179,7 +180,6 @@ class DomUI {
     if (initiallyOpen) {
       this.autoCloseTimeoutId = setTimeout(() => {
         if (!this.isInfoButtonInteracted) {
-          console.log('Initial auto-closing DOM splash panel.');
           this.closeSplashPanel();
         }
       }, 10000);
@@ -215,8 +215,6 @@ class DomUI {
       bcButton.dataset.xPercent = buttonXPercent.bc;
       bcButton.dataset.yPercent = buttonYPercent;
     }
-    
-    console.log('Social buttons added to DOM splash panel with relative positioning');
   }
   
   /**
@@ -321,8 +319,6 @@ class DomUI {
       textSpan.style.alignItems = 'center';
       textSpan.style.justifyContent = 'center';
     }
-    
-    console.log(`Repositioned ${button.dataset.type} button to x=${xPos}px, y=${yPos}px, fontSize=${fontSize}px`);
   }
     /**
    * Creates the info button
@@ -364,15 +360,12 @@ class DomUI {
     });
 
     infoButton.addEventListener('click', () => {
-      console.log('DOM Info button clicked.');
       this.isInfoButtonInteracted = true;
       clearTimeout(this.autoCloseTimeoutId);
       
       if (this.isSplashPanelOpen()) {
-        console.log('DOM Info button: Closing splash panel.');
         this.closeSplashPanel();
       } else {
-        console.log('DOM Info button: Opening splash panel.');
         this.openSplashPanel();
       }
     });
@@ -390,8 +383,6 @@ class DomUI {
    * @returns {Object} - Object containing the created nav buttons
    */
   createNavButtons() {
-    console.log('Creating navigation buttons');
-
     // Create backward button
     const backwardButton = document.createElement('div');
     backwardButton.className = 'dom-nav-button dom-nav-backward';
@@ -454,8 +445,6 @@ class DomUI {
     // Scale buttons based on current window size
     this.scaleNavButtons();
     
-    console.log('Navigation buttons created and scaled');
-    
     return {
       backwardButton: backwardButton,
       forwardButton: forwardButton
@@ -487,13 +476,10 @@ class DomUI {
       clearTimeout(this.splashPanelHoverCloseTimeoutId);
       this.splashPanelHoverCloseTimeoutId = setTimeout(() => {
         if (this.isSplashPanelOpen()) {
-          console.log('Auto-closing DOM splash panel after info button interaction');
           this.closeSplashPanel();
         }
       }, 5000);
     }
-    
-    console.log('DOM Splash panel opened and buttons repositioned');
   }
   
   /**
@@ -508,14 +494,10 @@ class DomUI {
       const scaledWidth = splashImage.offsetWidth;
       const currentLeft = parseInt(this.splashPanel.style.left) || 0;
       this.splashPanel.style.transform = `translateX(-${scaledWidth + currentLeft}px)`;
-      console.log(`Closing splash panel with transform: translateX(-${scaledWidth + currentLeft}px)`);
     } else {
       // Fallback if image isn't loaded yet
       this.splashPanel.style.transform = 'translateX(-100%)';
-      console.log('Closing splash panel with fallback transform: translateX(-100%)');
     }
-    
-    console.log('DOM Splash panel closed');
   }
   
   /**
@@ -531,7 +513,6 @@ class DomUI {
     
     // If the X translation is very small (near 0), consider it open
     const isOpen = Math.abs(matrix.m41) < 10;
-    console.log(`Checking if splash panel is open: ${isOpen} (transform: ${transform})`);
     
     return isOpen;
   }
@@ -552,8 +533,6 @@ class DomUI {
       button.style.lineHeight = `${size}px`;
       button.style.fontSize = `${fontSize}px`;
     });
-    
-    console.log(`Navigation buttons scaled to ${size}px with font size ${fontSize}px`);
   }
 
   /**
@@ -571,8 +550,6 @@ class DomUI {
     this.infoButton.style.height = `${size}px`;
     this.infoButton.style.lineHeight = `${size}px`;
     this.infoButton.style.fontSize = `${fontSize}px`;
-    
-    console.log(`Info button scaled to ${size}px with font size ${fontSize}px`);
   }
 
   /**
@@ -622,8 +599,6 @@ class DomUI {
           this.repositionSocialButton(button, splashImage);
         });
       }
-      
-      console.log(`Splash panel scale updated to ${newScale} (${scaledWidth}px width), Left: ${this.splashPanel.style.left}`);
     };
   }
 
@@ -666,8 +641,6 @@ class DomUI {
    * This ensures all UI elements stay properly positioned and scaled when window size changes
    */
   handleResize() {
-    console.log('Handling resize for DOM UI elements');
-    
     // Update info button position for orientation changes
     if (this.infoButton) {
       const isPortrait = window.innerWidth < window.innerHeight;
@@ -722,8 +695,6 @@ class DomUI {
       
       playButton.style.width = `${size}px`;
       playButton.style.height = `${size}px`;
-      
-      console.log(`Play button scaled to ${size}px`);
     }
     
     // Scale progress bar height
@@ -734,8 +705,6 @@ class DomUI {
       const height = Math.max(15, Math.round(baseHeight * scale));
       
       progressBar.style.height = `${height}px`;
-      
-      console.log(`Progress bar scaled to ${height}px height`);
     }
   }
 
@@ -748,7 +717,6 @@ class DomUI {
       this.container = null;
     }
     window.removeEventListener('resize', this.handleResize.bind(this));
-    console.log('DOM UI container and all elements cleaned up');
   }
 }
 

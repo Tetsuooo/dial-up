@@ -30,8 +30,15 @@ window.loadWebpFallback = async (url) => {
     img.crossOrigin = 'anonymous';
     
     img.onload = () => {
-      console.log(`WebP fallback loaded: ${url}`);
-      const texture = Texture.from(img);
+      // Create canvas from image to avoid PixiJS warnings
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      // Create texture from canvas
+      const texture = Texture.from(canvas);
       texture._isWebp = true;
       texture.valid = true;
       resolve(texture);
@@ -159,85 +166,47 @@ window.debugTextures = () => {
   console.log("Visual texture debugger opened. Click Highlight buttons to flash sprites.");
 };
 
-// Simplified asset loader that correctly handles both GIFs and static images
+// Simplified asset loader that uses canvas for all image types to avoid PixiJS warnings
 const loadAsset = async (url) => {
   try {
     const cleanUrl = url.replace(/\/+/g, '/').replace(/^\//, '');
-    console.log('Loading asset:', cleanUrl);
     
     const isGif = cleanUrl.toLowerCase().endsWith('.gif');
-    const isWebp = cleanUrl.toLowerCase().endsWith('.webp');
     
-    // For GIFs, use specialized handling
-    if (isGif) {
-      // Create an HTML image element for the GIF
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
+    // For all images (including GIFs), create canvas-based textures to avoid PixiJS warnings
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        // Always create canvas from image to avoid PixiJS warnings
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
         
-        img.onload = () => {
-          console.log(`GIF loaded: ${cleanUrl} (${img.width}x${img.height})`);
-          
-          // Create texture from image
-          const texture = Texture.from(img);
+        // Create texture from canvas instead of image
+        const texture = Texture.from(canvas);
+        texture.valid = true;
+        
+        if (isGif) {
           texture._isGif = true;
-          texture.valid = true; // Force texture to be valid
-          
-          // Keep the original image in the DOM so the GIF can animate
-          // This is important! The image needs to stay in the DOM for animation
-          const hiddenDiv = document.createElement('div');
-          hiddenDiv.style.position = 'fixed';
-          hiddenDiv.style.opacity = '0';
-          hiddenDiv.style.pointerEvents = 'none';
-          hiddenDiv.style.left = '-9999px';
-          hiddenDiv.style.top = '-9999px';
-          hiddenDiv.appendChild(img);
-          document.body.appendChild(hiddenDiv);
-          
-          // Store references for cleanup
-          texture._gifImg = img;
-          texture._gifDiv = hiddenDiv;
-          
-          console.log(`Created GIF texture for ${cleanUrl}`);
-          resolve(texture);
-        };
-        
-        img.onerror = () => {
-          console.error(`Failed to load GIF: ${cleanUrl}`);
-          resolve(null);
-        };
-        
-        img.src = cleanUrl;
-      });
-    } 
-    // For WebP images, use the Assets.load approach which properly handles WebP in PixiJS v8
-    else if (isWebp) {
-      try {
-        // Use Assets.load which properly handles WebP in PixiJS v8
-        const texture = await Assets.load(cleanUrl);
-        
-        if (texture) {
-          console.log(`WebP loaded directly via Assets.load: ${cleanUrl}`);
-          texture.valid = true;
-        } else {
-          console.warn(`Failed to load WebP via Assets.load: ${cleanUrl}`);
+          // Store the original URL for DOM-based GIF handling
+          texture._gifUrl = cleanUrl;
         }
         
-        return texture;
-      } catch (err) {
-        console.error(`Error loading WebP via Assets.load: ${cleanUrl}`, err);
-        return null;
-      }
-    } else {
-      // For other image types, use standard approach
-      const texture = await Assets.load(cleanUrl);
-      // Force texture to be valid
-      if (texture) {
-        texture.valid = true; 
-        console.log(`Regular texture loaded: ${cleanUrl} (${texture.width}x${texture.height})`);
-      }
-      return texture;
-    }
+        texture._gifCanvas = canvas;
+        resolve(texture);
+      };
+      
+      img.onerror = () => {
+        console.error(`Failed to load asset: ${cleanUrl}`);
+        resolve(null);
+      };
+      
+      img.src = cleanUrl;
+    });
   } catch (err) {
     console.error('Error loading asset:', url, err);
     return null;
@@ -255,12 +224,6 @@ const getAssets = async (assetsData, mix, layer) => {
       const assetPath = `assets/${mix}/${layer}/${encodeURIComponent(asset.filename.trim())}`;
       let texture = await loadAsset(assetPath);
       
-      // Try fallback loading method if the texture failed to load
-      if (!texture && assetPath.toLowerCase().endsWith('.webp')) {
-        console.log(`Attempting fallback WebP loading for: ${assetPath}`);
-        texture = await window.loadWebpFallback(assetPath);
-      }
-      
       if (texture) {
         // Ensure texture is properly marked as valid
         texture.valid = true;
@@ -271,9 +234,6 @@ const getAssets = async (assetsData, mix, layer) => {
           texture,
           valid: true
         });
-        console.log(`Successfully loaded: ${assetPath}`);
-      } else {
-        console.warn(`Failed to load texture: ${assetPath}`);
       }
     } catch (err) {
       console.error(`Error processing asset: ${asset.filename}`, err);
@@ -316,6 +276,7 @@ const getAssets = async (assetsData, mix, layer) => {
   const canvasOffsetX = -canvasWidth / 4; // Move left by 1/4 of canvas width
   const canvasOffsetY = -canvasHeight / 4; // Move up by 1/4 of canvas height
   
+
   // Make app available globally for debugging
   window.pixiApp = app;
   
@@ -364,39 +325,13 @@ const getAssets = async (assetsData, mix, layer) => {
   
   // Call update frequently for smooth animation
   app.ticker.add(app.updateGifSprites);
-  
+
   app.resizeTo = window;
   document.body.appendChild(mainCanvas);
 
-  // Set PixiJS canvas style
-  if (app.renderer && app.renderer.view && app.renderer.view.style) {
-    const canvasStyle = app.renderer.view.style;
-    canvasStyle.position = 'fixed'; // Use fixed instead of absolute for better positioning
-    canvasStyle.left = `${canvasOffsetX}px`;
-    canvasStyle.top = `${canvasOffsetY}px`;
-    // Don't use 100% width/height as that would scale the larger canvas
-    canvasStyle.width = `${canvasWidth}px`;
-    canvasStyle.height = `${canvasHeight}px`;
-    // Use setProperty for z-index to be more explicit
-    canvasStyle.setProperty('z-index', '2001', 'important');
-    // Ensure overflow is visible
-    document.body.style.overflow = 'hidden';
-    
-    console.log('Applied canvas styles. Canvas dimensions:', canvasWidth, 'x', canvasHeight, 
-                'positioned at:', canvasOffsetX, ',', canvasOffsetY);
-  } else {
-    console.error('ERROR: PixiJS app.renderer.view or app.renderer.view.style is not available. Canvas styles not applied.');
-    if (!app.renderer) {
-      console.error('Reason: app.renderer is undefined.');
-    } else if (!app.renderer.view) {
-      console.error('Reason: app.renderer.view is undefined.');
-    } else if (!app.renderer.view.style) {
-      console.error('Reason: app.renderer.view.style is undefined (app.renderer.view is not a valid DOM element with a style property).');
-      console.log('Value of app.renderer.view:', app.renderer.view);
-    }
-  }
-
-
+  // Note: Canvas styling removed to avoid PixiJS v8 compatibility issues
+  // The canvas positioning will be handled by the default PixiJS behavior
+  console.log('PixiJS app initialized. Canvas dimensions:', canvasWidth, 'x', canvasHeight);
 
   // ---------------------------------------------------------------------
   // FULLSCREEN CSS & APP CONFIG
@@ -838,13 +773,35 @@ Object.keys(animationParams).forEach(layerName => {
 });
 
   const renderPage = async () => {
-    console.log('Rendering page...');
-
-    // Clean up old DOM visual layers
+    // Enhanced cleanup sequence - clean up samples first, then other DOM layers
+    
+    // Step 1: Clean up all sample images immediately to prevent persistence
+    const allSampleImages = document.querySelectorAll('img[data-file-id]');
+    allSampleImages.forEach(img => {
+      if (img.parentNode) {
+        img.parentNode.removeChild(img);
+      }
+    });
+    
+    // Step 2: Clean up DOM visual layers
     const oldDomLayers = document.querySelectorAll('.dom-visual-layer');
     oldDomLayers.forEach(node => {
-      console.log('Removing old DOM layer:', node.dataset.layerType || 'sample_container');
+      // Force removal of any remaining sample images
+      const sampleImages = node.querySelectorAll('img[data-file-id]');
+      sampleImages.forEach(img => {
+        if (img.parentNode) {
+          img.parentNode.removeChild(img);
+        }
+      });
       node.remove();
+    });
+    
+    // Additional cleanup for any orphaned sample images
+    const orphanedSamples = document.querySelectorAll('img[data-file-id]');
+    orphanedSamples.forEach(img => {
+      if (img.parentNode) {
+        img.parentNode.removeChild(img);
+      }
     });
 
     // Clean up DOM UI
@@ -860,14 +817,18 @@ Object.keys(animationParams).forEach(layerName => {
     // Clean up old PixiJS containers and sprites
     if (app.stage.children.includes(backgroundContainer)) {
       backgroundContainer.children.forEach(layerContainer => {
+        // Call cleanup function if it exists (this will handle samples cleanup)
+        if (layerContainer.cleanup && typeof layerContainer.cleanup === 'function') {
+          layerContainer.cleanup();
+        }
+        
         layerContainer.children.forEach(sprite => {
           // Clean up any GIF DOM elements to prevent memory leaks
           if (sprite.texture && sprite.texture._gifDiv) {
             try {
               document.body.removeChild(sprite.texture._gifDiv);
-              console.log('Removed GIF container for cleanup');
             } catch (e) {
-              console.warn('Error removing GIF container:', e);
+              // Ignore cleanup errors
             }
           }
           if (sprite.destroy) sprite.destroy();
@@ -890,10 +851,8 @@ Object.keys(animationParams).forEach(layerName => {
     
     // Force render to check if container is visible
     app.renderer.render(app.stage);
-    console.log("Added backgroundContainer to stage and forced render");
 
     const mixName = window.location.hash.replace('#', '') || 'mix01';
-    console.log('Current mix:', mixName);
     const links = ArtistLinks[mixName] || {};
     
     app.stage.children
@@ -911,40 +870,28 @@ Object.keys(animationParams).forEach(layerName => {
 
       const splashFilename = splashAssetInfo.filename;
       const splashAssetUrl = `assets/${mixName}/splash/${encodeURIComponent(splashFilename.trim())}`;
-      console.log('Attempting to load splash asset from asset-data.json:', splashAssetUrl);
       
       let splashTexture = await loadAsset(splashAssetUrl); // Using loadAsset to handle different types
       let splashSprite;
 
       if (!splashTexture || !splashTexture.valid) {
-        console.warn('Initial loadAsset failed for splash texture or texture is invalid:', splashAssetUrl);
         // Attempt explicit fallback if it was a WebP and loadAsset didn't get it initially
         if (splashAssetUrl.toLowerCase().endsWith('.webp')) {
-            console.log(`Attempting explicit fallback WebP loading for splash: ${splashAssetUrl}`);
             splashTexture = await window.loadWebpFallback(splashAssetUrl); // Assign to splashTexture
-            if (splashTexture && splashTexture.valid) {
-                console.log('Splash texture loaded successfully via explicit fallback.');
-            } else {
-                 console.error('Explicit fallback for splash WebP also failed.');
+            if (!splashTexture || !splashTexture.valid) {
                  throw new Error('Splash texture failed to load, even with explicit fallback.');
             }
         } else {
             throw new Error('Splash texture failed to load and is not WebP for fallback.');
         }
-      } else {
-        console.log('Splash texture loaded successfully via loadAsset:', splashAssetUrl);
       }
       
       // Ensure splashSprite is created with the successfully loaded texture
       if (splashTexture && splashTexture.valid) {
           splashSprite = new Sprite(splashTexture);
       } else {
-          // This case should ideally be caught by the errors above, but as a safeguard:
-          console.error('Splash sprite cannot be created, texture is invalid or null after load attempts.');
           throw new Error('Splash sprite cannot be created due to invalid texture.');
       }
-      
-      console.log(`Splash sprite created. Width: ${splashSprite.width}, Height: ${splashSprite.height}, Texture Valid: ${splashSprite.texture.valid}`);
 
       // Determine orientation and set appropriate scale
       const isPortrait = window.innerWidth < window.innerHeight;
@@ -952,12 +899,8 @@ Object.keys(animationParams).forEach(layerName => {
       
       // Scale the splash sprite based on orientation
       splashSprite.scale.set(splashScale);
-      console.log(`Splash sprite scaled to ${splashScale * 100}% for ${isPortrait ? 'portrait' : 'landscape'} mode. New dimensions: ${splashSprite.width}x${splashSprite.height}`);
 
       // ---- Create DOM Splash Panel ----
-      // Use the already defined splashAssetUrl
-      console.log('Creating DOM splash panel with image:', splashAssetUrl);
-      
       // Create the DOM splash panel with orientation-aware scaling
       domUI.createSplashPanel({
         imageUrl: splashAssetUrl,
@@ -967,8 +910,6 @@ Object.keys(animationParams).forEach(layerName => {
         yOffset: 100,
         scale: splashScale // Pass the scale to DOM UI
       });
-      
-      console.log('DOM Splash panel created and added to document.');
 
       // Initial auto-close timeout is handled in the DOM UI implementation
 
@@ -984,19 +925,15 @@ Object.keys(animationParams).forEach(layerName => {
     // Create DOM Info Button
     const infoButton = domUI.createInfoButton();
     
-    // No need for any PixiJS UI elements as we're using DOM UI now
-    
     // Info button click handler is implemented in the DOM UI class
     
     // Store flag for keeping track of info button interactions
     domUI.isInfoButtonInteracted = isInfoButtonInteracted;
     
-    console.log('DOM Info button created and added to document.');
     // --- End Splash Panel Setup ---
 
     if (mixName.startsWith('mix')) {
       const PageRenderer = MixCodeFactory.getMixCode(mixName);
-      console.log('PageRenderer:', PageRenderer);
       if (!PageRenderer) {
         console.error(`No PageRenderer found for mix: ${mixName}`);
         return;
@@ -1004,7 +941,6 @@ Object.keys(animationParams).forEach(layerName => {
 
       try {
         const layers = await PageRenderer.getLayers();
-        console.log('Layers:', layers);
 
         if (!layers || layers.length === 0) {
           console.warn(`No layers found for mix: ${mixName}`);
@@ -1023,24 +959,17 @@ Object.keys(animationParams).forEach(layerName => {
         // Force backgroundContainer zIndex below all its children
         backgroundContainer.zIndex = 5;
         
-        // Sort the layers array by zIndex to ensure proper rendering order
+        // Sort the layers array to ensure proper rendering order
         layers.sort((a, b) => {
           const aIndex = layerZIndices[a.name] || a.zIndex || 0;
           const bIndex = layerZIndices[b.name] || b.zIndex || 0;
           return aIndex - bIndex;
-        });
-        
-        // Log the sorted layer order
-        console.log("Layers sorted by zIndex:");
-        layers.forEach(layer => {
-          console.log(`  ${layer.name}: ${layerZIndices[layer.name] || layer.zIndex}`);
         });
 
         for (const layer of layers) {
           // Update zIndex if we have a predefined one
           if (layerZIndices[layer.name] !== undefined) {
             layer.zIndex = layerZIndices[layer.name];
-            console.log(`Setting ${layer.name} layer zIndex to ${layer.zIndex}`);
           }
           
           const container = new Container();
@@ -1049,23 +978,16 @@ Object.keys(animationParams).forEach(layerName => {
           container.renderable = true;
           container.alpha = 1;
           container.zIndex = layer.zIndex;
-          container.name = layer.name; // Add name for debugging
-          console.log(`Creating layer ${layer.name} with zIndex ${layer.zIndex}`);
+          container.label = layer.name; // Use label instead of name for PixiJS v8
           
           const files = await getAssets(AssetData, mixName, layer.name);
           if (files && files.length > 0) {
-            console.log(`Loaded ${files.length} valid textures for ${layer.name}`);
-            files.forEach((file, i) => {
-              console.log(`File ${i}: ${file.filename}, texture valid: ${file.texture?.valid}, dimensions: ${file.texture?.width}x${file.texture?.height}`);
-            });
-            
             // Render the layer
             await layer.renderer.bind(layer)(files, container, app);
             
             // Only add if it has children
             if (container.children.length > 0) {
               backgroundContainer.addChild(container);
-              console.log(`Added layer ${layer.name} with ${container.children.length} sprites`);
               
               // Initialize animated layers (background and mist)
               if (layer.name === 'background' || layer.name === 'mist') {
@@ -1107,9 +1029,6 @@ Object.keys(animationParams).forEach(layerName => {
                   animationParams[layer.name].sprites.push(sprite);
                 });
                 
-                // Log the layer zIndex to confirm it's correct
-                console.log(`${layer.name} layer zIndex: ${container.zIndex}`);
-                
                 // Make sure the container's Z-index is properly set in the parent
                 backgroundContainer.sortChildren();
               } else {
@@ -1122,11 +1041,7 @@ Object.keys(animationParams).forEach(layerName => {
               
               // Update the display
               app.renderer.render(app.stage);
-            } else {
-              console.warn(`Layer ${layer.name} has no sprites to display`);
             }
-          } else {
-            console.warn(`No valid files loaded for layer ${layer.name}`);
           }
             
           app.renderer.render(app.stage);
@@ -1134,12 +1049,6 @@ Object.keys(animationParams).forEach(layerName => {
         
         // Force sort all children to respect Z indices
         backgroundContainer.sortChildren();
-        
-        // Log the final layer structure to verify ordering
-        console.log("Final layer structure after sorting:");
-        backgroundContainer.children.forEach(container => {
-          console.log(`Layer: ${container.name}, zIndex: ${container.zIndex}`);
-        });
       } catch (err) {
         console.error(`Error loading layers for ${mixName}:`, err);
       }
@@ -1148,8 +1057,6 @@ Object.keys(animationParams).forEach(layerName => {
     app.stage.sortChildren();
     renderContainers.menu.zIndex = 1000;
     app.stage.addChild(renderContainers.menu);
-
-
   };
 
   if (!window.location.hash) {
@@ -1159,13 +1066,8 @@ Object.keys(animationParams).forEach(layerName => {
 
   // Add hash change event listener to re-render when URL changes
   window.addEventListener('hashchange', () => {
-    console.log('Hash changed, re-rendering page');
     renderPage();
   });
-
-
-
-
 
   const changeMix = async (difference) => {
     if (scPlayer) {

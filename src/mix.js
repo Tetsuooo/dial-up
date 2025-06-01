@@ -42,7 +42,6 @@ export const getMixCode = (mixName) => {
           // Force immediate render to see if gradient appears
           if (app.renderer) {
             app.renderer.render(app.stage);
-            console.log("Forced render after adding gradient");
           }
           
           return container;
@@ -52,7 +51,6 @@ export const getMixCode = (mixName) => {
         name: 'background',
         zIndex: 10, // Updated: Lower z-index
         renderer: async (files, container, app) => {
-          console.log(`Background renderer received ${files.length} files`);
           // Use DOM-based renderer for backgrounds
           return backgroundLayerRenderer(files, container, app);
         }
@@ -61,11 +59,8 @@ export const getMixCode = (mixName) => {
         name: 'samples',
         zIndex: 20, // Updated: Middle z-index, BELOW mist
         renderer: async (files, container, app) => {
-          console.log(`Sample renderer received ${files.length} files`);
-          
           // No fancy validation, just ensure there's a texture
           const validFiles = files.filter(file => file && file.texture);
-          console.log(`${validFiles.length}/${files.length} files have textures`);
           
           // Attach painter for future use
           app.MovingSpritePainter = MovingSpritePainter;
@@ -77,7 +72,6 @@ export const getMixCode = (mixName) => {
         name: 'mist',
         zIndex: 30, // Updated: Higher z-index, ABOVE samples
         renderer: async (files, container, app) => {
-          console.log(`Mist renderer received ${files.length} files`);
           // Use DOM-based renderer for mist
           return mistLayerRenderer(files, container, app);
         }

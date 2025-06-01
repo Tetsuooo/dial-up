@@ -45,13 +45,12 @@ function shuffleArray(array) {
 export const createDomLayerRenderer = (layerType) => {
   // Return the actual renderer function
   return async (files, container, rootStage) => {
-    console.log(`Rendering ${layerType} layer using DOM approach`);
-    
     // Remove previous DOM container if it exists
     if (container._domElement) {
       container._domElement.parentNode?.removeChild(container._domElement);
     }
-      // Create a container div for our layer
+    
+    // Create a container div for our layer
     const layerContainer = document.createElement('div');
     layerContainer.classList.add('dom-visual-layer'); // Add class for cleanup
     layerContainer.style.position = 'fixed';
@@ -66,11 +65,9 @@ export const createDomLayerRenderer = (layerType) => {
     // Make sure DOM layers are always below PixiJS UI (z-index < 2000)
     // New desired order: Mist (20) < Samples (25) < Background (30)
     layerContainer.style.zIndex = layerType === 'background' ? '30' : '20'; // Background: 30, Mist: 20
-    console.log(`Setting ${layerType} layer z-index to ${layerContainer.style.zIndex}`);
     
     layerContainer.dataset.layerType = layerType;
     document.body.appendChild(layerContainer);
-    console.log(`Added ${layerType} container to DOM`);
     
     // Filter valid files
     const validFiles = files.filter(file => file && file.filename);
@@ -91,9 +88,8 @@ export const createDomLayerRenderer = (layerType) => {
     
     // Function to add a new layer element
     const addLayerElement = (file) => {
-      console.log(`Creating ${layerType} element from file:`, file.filename);
-      
-      try {        // Create image element
+      try {        
+        // Create image element
         const img = document.createElement('img');
         img.style.position = 'absolute';
         img.dataset.layerType = layerType;
@@ -129,10 +125,9 @@ export const createDomLayerRenderer = (layerType) => {
         img.onerror = () => {
           console.error(`Failed to load ${layerType} image: ${file.filename}`);
         };
-          // Make sure the image is loaded before adding animation
+        
+        // Make sure the image is loaded before adding animation
         img.onload = () => {
-          console.log(`${layerType} image loaded: ${file.filename}, Natural size: ${img.naturalWidth}x${img.naturalHeight}`);
-          
           // Now that we know the natural size, we can properly position it
           // Ensure images are at least as large as the viewport (or close to it)
           // while still maintaining their aspect ratio
@@ -234,8 +229,6 @@ export const createDomLayerRenderer = (layerType) => {
           // Slower fade rate for more gradual transitions
           let opacityChangeRate = 0.0004 + (Math.random() * 0.0003); // Between 0.0004-0.0007
           
-          console.log(`${layerType} starting with opacity ${initialOpacity.toFixed(2)}, direction: increasing`);
-          
           // Set initial opacity
           img.style.opacity = initialOpacity.toString();
 
@@ -290,33 +283,39 @@ export const createDomLayerRenderer = (layerType) => {
               // If we reach max opacity (0.8-1.0), switch direction but add a longer pause
               // Use a random max opacity between 0.8 and 1.0 for variety
               const maxOpacity = layerType === 'background' ? 1.0 : (0.8 + Math.random() * 0.2);
-                if (currentOpacity >= maxOpacity) {
+              
+              if (currentOpacity >= maxOpacity) {
                 currentOpacity = maxOpacity;
                 opacityDirection = false;
-                  // Longer pause at full opacity (5-12 seconds)
+                
+                // Longer pause at full opacity - extend pause for mist to maintain coverage
+                const pauseTime = layerType === 'mist' ? 
+                  (8000 + Math.random() * 10000) : // 8-18 seconds for mist
+                  (5000 + Math.random() * 7000);   // 5-12 seconds for background
+                
                 opacityChangeRate = 0.00001; // Extremely slow fade out initially (virtually paused)
                 
                 // Schedule a reset of the opacity rate after a much longer random delay
                 setTimeout(() => {
                   // Only reset if still decreasing and element exists
                   if (!opacityDirection && img.parentNode) {
-                    opacityChangeRate = 0.0002 + (Math.random() * 0.0003);
-                    console.log(`${layerType} resuming normal fade out`);
+                    // Slower fade out for mist to maintain coverage
+                    opacityChangeRate = layerType === 'mist' ? 
+                      (0.0001 + Math.random() * 0.0002) : // Slower fade for mist
+                      (0.0002 + Math.random() * 0.0003);  // Normal fade for background
                   }
-                }, 5000 + Math.random() * 7000); // 5-12 seconds pause
-                
-                console.log(`${layerType} reached max opacity (${maxOpacity.toFixed(2)}), pausing before decrease`);
+                }, pauseTime);
               }
             } else {
               // Decreasing opacity
               currentOpacity -= delta * opacityChangeRate;
-                // If we reach min opacity (0.0), remove and replace
+              
+              // If we reach min opacity (0.0), remove and replace
               if (currentOpacity <= 0.0) {
                 currentOpacity = 0.0;
                 
                 // When opacity becomes 0, add a replacement BEFORE removing this element
                 // This ensures we always maintain exactly 3 elements per layer type
-                console.log(`${layerType} element faded out, triggering replacement`);
                 addReplacementElement();
                 
                 // Then remove this element from the DOM
@@ -329,14 +328,13 @@ export const createDomLayerRenderer = (layerType) => {
                     activeElements.splice(index, 1);
                   }
                   
-                  console.log(`Removed faded ${layerType} element`);
-                  
                   // Important: Return early to stop animating this element
                   return;
                 }
               }
             }
-              // Apply the current opacity
+            
+            // Apply the current opacity
             img.style.opacity = currentOpacity.toString();
             
             // Continue animation if element still exists
@@ -357,7 +355,6 @@ export const createDomLayerRenderer = (layerType) => {
         
         // Add to container
         layerContainer.appendChild(img);
-        console.log(`Added ${layerType} image to container: ${file.filename}`);
         
         // Track the active element
         activeElements.push({
@@ -367,11 +364,12 @@ export const createDomLayerRenderer = (layerType) => {
         
       } catch (err) {
         console.error(`Error creating ${layerType} DOM element:`, err);
-      }    };
+      }
+    };
     
     // Add each layer image with limited count
-    // Limit to exactly 3 elements for both background and mist layers for enhanced depth
-    const maxElements = 3; 
+    // Increase mist count for better coverage, keep background at 3 for depth
+    const maxElements = layerType === 'mist' ? 6 : 3; // Mist: 6, Background: 3
     
     // Keep a pool of files for rotation when elements fade out
     const filePool = [...shuffledFiles];
@@ -379,22 +377,19 @@ export const createDomLayerRenderer = (layerType) => {
     
     // Function to add a new element when one fades out    
     const addReplacementElement = () => {
-      // Always check current count of elements to maintain exactly 3
+      // Always check current count of elements to maintain target count
       const currentCount = document.querySelectorAll(`img[data-layer-type="${layerType}"]`).length;
       
-      // If we already have 3 or more elements, no need to add more
+      // If we already have target number or more elements, no need to add more
       if (currentCount >= maxElements) {
-        console.log(`Already have ${currentCount} ${layerType} elements, skipping replacement`);
         return;
       }
-        // Calculate how many elements we need to add to reach exactly 3
+      
+      // Calculate how many elements we need to add to reach target
       const elementsToAdd = maxElements - currentCount;
-      console.log(`Adding ${elementsToAdd} new ${layerType} elements to maintain ${maxElements} total`);
       
       // If we've used most files, reshuffle and start again
       if (filePool.length < elementsToAdd) {
-        console.log(`${layerType} file pool running low (${filePool.length}), reshuffling`);
-        
         // Create a new shuffled pool from all valid files
         // But exclude currently active files to avoid duplicates
         const activeFileNames = activeElements.map(el => el.file.filename);
@@ -402,7 +397,6 @@ export const createDomLayerRenderer = (layerType) => {
         
         if (availableFiles.length > 0) {
           filePool.push(...shuffleArray(availableFiles));
-          console.log(`Added ${availableFiles.length} files to ${layerType} pool`);
         } else {
           // If all files are currently active, add all files to ensure we have enough
           filePool.push(...shuffleArray(validFiles));
@@ -421,12 +415,13 @@ export const createDomLayerRenderer = (layerType) => {
         
         // Add small staggered delay between multiple elements (if needed)
         setTimeout(() => {
-          console.log(`Adding replacement ${layerType} element ${i+1}/${elementsToAdd}`);
           addLayerElement(nextFile);
         }, i * 250); // Small stagger of 250ms between elements
       }
-    };    // Initial population of elements with staggered start
-    // Always add exactly 3 elements of each type
+    };
+
+    // Initial population of elements with staggered start
+    // Add target number of elements for each type (3 for background, 5 for mist)
     for (let i = 0; i < Math.min(maxElements, shuffledFiles.length); i++) {
       // Stagger the initial creation for more natural appearance
       setTimeout(() => {
@@ -439,12 +434,11 @@ export const createDomLayerRenderer = (layerType) => {
           if (index !== -1) {
             filePool.splice(index, 1);
           }
-          
-          console.log(`Added initial ${layerType} element ${i+1}/${maxElements}`);
         }
       }, i * 500); // Stagger by 500ms each to ensure distinct appearances
     }
-      // Set up cleanup function for later
+    
+    // Set up cleanup function for later
     const cleanup = () => {
       // Cancel all animation frames
       animationFrames.forEach(frameId => cancelAnimationFrame(frameId));
@@ -458,22 +452,6 @@ export const createDomLayerRenderer = (layerType) => {
     // Attach DOM element and cleanup to container for reference
     container._domElement = layerContainer;
     container.cleanup = cleanup;
-    
-    // Add a check to make sure the container is visible in the DOM
-    setTimeout(() => {
-      const layerElement = document.querySelector(`[data-layer-type="${layerType}"]`);
-      if (layerElement) {
-        const style = window.getComputedStyle(layerElement);
-        console.log(`${layerType} container visibility check:`, {
-          display: style.display,
-          opacity: style.opacity,
-          zIndex: style.zIndex,
-          childCount: layerElement.children.length
-        });
-      } else {
-        console.error(`${layerType} container not found in DOM!`);
-      }
-    }, 1000);
     
     return container;
   };

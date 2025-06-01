@@ -26,27 +26,77 @@ function shuffleArray(array) {
 
 // Create and add sprites for a collection of files
 export const samplesLayerRenderer = async (files, container, rootStage) => {
-  console.log(`Rendering samples using DOM approach`);
-  
-  // Remove previous DOM container if it exists
+  // Enhanced cleanup of previous DOM container and all related elements
   if (container._domElement) {
-    document.body.removeChild(container._domElement);
+    // Stop all intervals first to prevent new images from being added during cleanup
+    if (container._intervals) {
+      container._intervals.forEach(interval => clearInterval(interval));
+      container._intervals = null;
+    }
+    
+    // Remove all sample images from the container
+    const existingImages = container._domElement.querySelectorAll('img[data-file-id]');
+    existingImages.forEach(img => {
+      if (img.parentNode) {
+        img.parentNode.removeChild(img);
+      }
+    });
+    
+    // Remove the container itself
+    if (container._domElement.parentNode) {
+      container._domElement.parentNode.removeChild(container._domElement);
+    }
+    container._domElement = null;
   }
+  
+  // Clean up any existing active images from previous mix
+  if (container._activeImages) {
+    container._activeImages.forEach(imageInfo => {
+      if (imageInfo.element && imageInfo.element.parentNode) {
+        imageInfo.element.parentNode.removeChild(imageInfo.element);
+      }
+    });
+    container._activeImages = null;
+  }
+  
+  // Global cleanup: Remove any orphaned sample images that might be left over
+  const orphanedSamples = document.querySelectorAll('img[data-file-id]');
+  orphanedSamples.forEach(img => {
+    if (img.parentNode) {
+      img.parentNode.removeChild(img);
+    }
+  });
+  
+  // Also clean up any containers that might have the samples class but no parent container reference
+  const orphanedContainers = document.querySelectorAll('.dom-visual-layer');
+  orphanedContainers.forEach(containerEl => {
+    const hasValidParent = containerEl.dataset.layerType === 'background' || containerEl.dataset.layerType === 'mist';
+    if (!hasValidParent) {
+      // This might be an orphaned samples container
+      const sampleImages = containerEl.querySelectorAll('img[data-file-id]');
+      if (sampleImages.length > 0) {
+        containerEl.remove();
+      }
+    }
+  });
   
   // Create a container div for our samples
   const samplesContainer = document.createElement('div');
-  samplesContainer.classList.add('dom-visual-layer'); // Add class for cleanup
+  samplesContainer.classList.add('dom-visual-layer');
   samplesContainer.style.position = 'fixed';
   samplesContainer.style.top = '0';
   samplesContainer.style.left = '0';
   samplesContainer.style.width = '100%';
   samplesContainer.style.height = '100%';
-  samplesContainer.style.pointerEvents = 'none'; // Let events pass through
-  samplesContainer.style.zIndex = '25'; // Match the zIndex from mix.js, below UI
+  samplesContainer.style.pointerEvents = 'none';
+  samplesContainer.style.zIndex = '25';
   document.body.appendChild(samplesContainer);
   
   // Filter valid files
   const validFiles = files.filter(file => file && file.texture);
+  
+  // Reduce maximum concurrent images for balanced display
+  const maxImages = Math.min(6, Math.max(3, Math.floor(validFiles.length / 2))); // 3-7 images max
   
   // Ensure all files have a unique identifier
   validFiles.forEach((file, index) => {
@@ -55,12 +105,10 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
   
   // Create a randomized sequence of files to display
   let sequenceIndex = 0;
-  let fileSequence = shuffleArray([...validFiles]); // Create a copy to shuffle
+  let fileSequence = shuffleArray([...validFiles]);
   
   // Keep track of files currently displayed to avoid duplicates
   const displayedFileIds = new Set();
-  
-  console.log(`Created initial random sequence of ${fileSequence.length} files`);
   
   // Function to get the next file in sequence (avoiding duplicates)
   const getNextFile = () => {
@@ -68,9 +116,8 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
     
     // If we've used all files in the sequence, shuffle and start again
     if (sequenceIndex >= fileSequence.length) {
-      fileSequence = shuffleArray([...validFiles]); // Create new copy
+      fileSequence = shuffleArray([...validFiles]);
       sequenceIndex = 0;
-      console.log(`Reshuffled file sequence`);
     }
     
     // Find the next file that's not already displayed
@@ -81,29 +128,16 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
       const candidate = fileSequence[sequenceIndex];
       sequenceIndex = (sequenceIndex + 1) % fileSequence.length;
       
-      // If the candidate isn't displayed, use it
       if (!displayedFileIds.has(candidate.id)) {
         file = candidate;
         displayedFileIds.add(candidate.id);
         break;
       }
       
-      // If we've checked all files and they're all displayed, break
       if (sequenceIndex === startIndex) {
-        console.warn("All files are currently displayed - can't find non-duplicate");
         break;
       }
     } while (file === null);
-    
-    // If still no file and we have fewer displayed than valid files, 
-    // our logic is wrong - just pick a random one not displayed
-    if (file === null && displayedFileIds.size < validFiles.length) {
-      const notDisplayed = validFiles.find(f => !displayedFileIds.has(f.id));
-      if (notDisplayed) {
-        file = notDisplayed;
-        displayedFileIds.add(notDisplayed.id);
-      }
-    }
     
     return file;
   };
@@ -113,31 +147,30 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
   
   // Function to add a new image from sequence
   const addNextImage = () => {
-    if (activeImages.length >= 10 || validFiles.length === 0) return;
+    if (activeImages.length >= maxImages || validFiles.length === 0) return;
     
-    // Get next file from sequence
     const file = getNextFile();
     if (!file) return;
     
     try {
-      // Create image element
+      // Create image element with optimized loading
       const img = document.createElement('img');
       img.style.position = 'absolute';
+      img.loading = 'lazy'; // Enable lazy loading for performance
+      img.decoding = 'async'; // Enable async decoding
       
-      // Scale image using randn_bm function with updated range 150-9000 and skew 7
-      const size = randn_bm(150, 9000, 7);
-      console.log(`Creating sample with size: ${size.toFixed(0)}px`);
+      // Restore original size range for proper distribution
+      const size = randn_bm(150, 9000, 6); // Back to original range: 150-9000px
       
-      // Generate random opacity between 0.3 and 1.0
-      const randomOpacity = 0.3 + Math.random() * 0.7;
+      // Generate random opacity between 0.4 and 0.9 (more visible, less transparent layers)
+      const randomOpacity = 0.4 + Math.random() * 0.5;
       img.style.opacity = randomOpacity.toFixed(2);
-      console.log(`Sample opacity: ${randomOpacity.toFixed(2)}`);
       
       img.style.width = `${size}px`;
-      img.style.height = 'auto'; // Maintain aspect ratio
+      img.style.height = 'auto';
       
       // Position randomly on screen (avoiding edges)
-      const screenPadding = Math.min(150, window.innerWidth * 0.1);
+      const screenPadding = Math.min(100, window.innerWidth * 0.1);
       const maxX = window.innerWidth - screenPadding;
       const maxY = window.innerHeight - screenPadding;
       const randomX = screenPadding + Math.random() * (maxX - 2 * screenPadding);
@@ -147,44 +180,54 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
       img.style.left = `${randomX}px`;
       img.style.transform = 'translate(-50%, -50%)';
       img.style.zIndex = '100';
-      img.style.pointerEvents = 'all'; // Make draggable
+      img.style.pointerEvents = 'all';
       img.style.cursor = 'grab';
       
-      // No drop shadow or outline
+      // Optimize rendering
+      img.style.willChange = 'transform'; // Hint for GPU acceleration
+      img.style.backfaceVisibility = 'hidden';
+      
+      // No styling effects that cause repaints
       img.style.boxShadow = 'none';
       img.style.border = 'none';
       img.style.outline = 'none';
       
-      // Use the original file URL
-      img.src = file.filename;
+      // Force GIF looping by adding a random query parameter to break cache
+      let imageSrc = file.filename;
+      if (file.filename.toLowerCase().endsWith('.gif')) {
+        imageSrc = `${file.filename}?loop=${Date.now()}`;
+        img.style.imageRendering = 'pixelated'; // Preserve pixel art quality for GIFs
+      }
+      
+      img.src = imageSrc;
       img.alt = `Sample ${file.id}`;
-      img.dataset.fileId = file.id; // Store the fileId for reference
+      img.dataset.fileId = file.id;
       
-      // Log the actual size of the image for debugging
-      img.onload = () => {
-        console.log(`Image loaded: ${file.filename} - Specified size: ${size.toFixed(0)}px, Actual size: ${img.offsetWidth}x${img.offsetHeight}`);
-      };
-      
-      // Make draggable with mouse
+      // Optimized drag handling with throttling
       let isDragging = false;
       let startX, startY, startLeft, startTop;
+      let lastMoveTime = 0;
       
       img.addEventListener('mousedown', (e) => {
         isDragging = true;
         img.style.cursor = 'grabbing';
-        img.style.zIndex = '100';
+        img.style.zIndex = '101';
         
         startX = e.clientX;
         startY = e.clientY;
         startLeft = parseInt(img.style.left);
         startTop = parseInt(img.style.top);
         
-        // Prevent default drag behavior
         e.preventDefault();
       });
       
+      // Throttled mousemove for better performance
       document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
+        
+        const now = Date.now();
+        if (now - lastMoveTime < 16) return; // Limit to ~60fps
+        lastMoveTime = now;
         
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
@@ -212,11 +255,8 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
         size: size
       });
       
-      console.log(`Added image ${sequenceIndex}/${fileSequence.length}: ${activeImages.length}/10 active, fileId=${file.id}`);
-      
     } catch (err) {
-      console.error(`Error creating DOM element for sample:`, err);
-      // Remove from displayed set if it failed
+      console.error(`Error creating optimized sample:`, err);
       if (file) displayedFileIds.delete(file.id);
     }
   };
@@ -225,72 +265,84 @@ export const samplesLayerRenderer = async (files, container, rootStage) => {
   const removeRandomImage = () => {
     if (activeImages.length === 0) return;
     
-    // Pick a random image to remove
     const randomIndex = Math.floor(Math.random() * activeImages.length);
     const imageInfo = activeImages[randomIndex];
     
-    // Remove from DOM
-    samplesContainer.removeChild(imageInfo.element);
+    // Remove immediately without fade out
+    if (imageInfo.element.parentNode) {
+      samplesContainer.removeChild(imageInfo.element);
+    }
     
-    // Remove from tracking set
     if (imageInfo.file && imageInfo.file.id) {
       displayedFileIds.delete(imageInfo.file.id);
     }
     
-    // Remove from tracking array
     activeImages.splice(randomIndex, 1);
-    
-    console.log(`Removed image: ${activeImages.length}/10 active`);
   };
   
-  // Initial population - start with exactly ONE image instead of 5
+  // Start with only 1 image for immediate display
   if (validFiles.length > 0) {
     addNextImage();
-    console.log("Started with 1 initial sample");
   }
   
-  // Set up asynchronous appearance/disappearance intervals
-  // Add images gradually with a longer interval (4-6 seconds)
+  // More balanced intervals
   const addInterval = setInterval(() => {
-    if (activeImages.length < 10 && Math.random() < 0.8) { // Higher probability to add
+    if (activeImages.length < maxImages && Math.random() < 0.6) {
       addNextImage();
-      console.log(`Added new sample. Now displaying ${activeImages.length} samples`);
     }
-  }, 4000 + Math.random() * 2000); // Random interval between 4-6 seconds
+  }, 5000 + Math.random() * 2000); // 5-7 seconds between additions
   
-  // Remove images with a different interval, but only when we have 5+ images
   const removeInterval = setInterval(() => {
-    // Only start removing when we have more than 5 images (changed from 7)
-    if (activeImages.length > 5 && Math.random() < 0.3) {
+    if (activeImages.length > Math.floor(maxImages / 2) && Math.random() < 0.4) {
       removeRandomImage();
-      console.log(`Removed a sample. Now displaying ${activeImages.length} samples`);
     }
-  }, 5000 + Math.random() * 3000); // Slightly longer interval for removals
+  }, 8000 + Math.random() * 4000); // 8-12 seconds between removals
   
   // Store intervals for cleanup
   container._intervals = [addInterval, removeInterval];
-  
-  // Store reference to DOM container for cleanup
   container._domElement = samplesContainer;
   container._activeImages = activeImages;
   
-  // Clean up on page change or unload
+  // Enhanced cleanup function
   const cleanup = () => {
+    // Stop intervals immediately to prevent race conditions
     if (container._intervals) {
       container._intervals.forEach(interval => clearInterval(interval));
       container._intervals = null;
     }
+    
+    // Remove all active images immediately without fade out
+    if (activeImages) {
+      activeImages.forEach(imageInfo => {
+        if (imageInfo.element && imageInfo.element.parentNode) {
+          imageInfo.element.parentNode.removeChild(imageInfo.element);
+        }
+      });
+      // Clear tracking arrays and sets
+      activeImages.length = 0;
+    }
+    
+    displayedFileIds.clear();
+    
+    // Remove container immediately
     if (container._domElement && container._domElement.parentNode) {
       container._domElement.parentNode.removeChild(container._domElement);
       container._domElement = null;
     }
-    container._activeImages = [];
-    displayedFileIds.clear(); // Clear the set of displayed file IDs
+    
+    // Final sweep: Remove any remaining sample images globally
+    const remainingSamples = document.querySelectorAll('img[data-file-id]');
+    remainingSamples.forEach(img => {
+      if (img.parentNode) {
+        img.parentNode.removeChild(img);
+      }
+    });
+    
+    // Clear container references
+    container._activeImages = null;
   };
   
-  // Attach cleanup method to container
   container.cleanup = cleanup;
   
-  // Return the container as expected by the caller
   return container;
 };
