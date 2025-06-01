@@ -288,23 +288,16 @@ export const createDomLayerRenderer = (layerType) => {
                 currentOpacity = maxOpacity;
                 opacityDirection = false;
                 
-                // Longer pause at full opacity - extend pause for mist to maintain coverage
-                const pauseTime = layerType === 'mist' ? 
-                  (8000 + Math.random() * 10000) : // 8-18 seconds for mist
-                  (5000 + Math.random() * 7000);   // 5-12 seconds for background
-                
+                // Longer pause at full opacity (5-12 seconds)
                 opacityChangeRate = 0.00001; // Extremely slow fade out initially (virtually paused)
                 
                 // Schedule a reset of the opacity rate after a much longer random delay
                 setTimeout(() => {
                   // Only reset if still decreasing and element exists
                   if (!opacityDirection && img.parentNode) {
-                    // Slower fade out for mist to maintain coverage
-                    opacityChangeRate = layerType === 'mist' ? 
-                      (0.0001 + Math.random() * 0.0002) : // Slower fade for mist
-                      (0.0002 + Math.random() * 0.0003);  // Normal fade for background
+                    opacityChangeRate = 0.0002 + (Math.random() * 0.0003);
                   }
-                }, pauseTime);
+                }, 5000 + Math.random() * 7000); // 5-12 seconds pause
               }
             } else {
               // Decreasing opacity
@@ -369,7 +362,7 @@ export const createDomLayerRenderer = (layerType) => {
     
     // Add each layer image with limited count
     // Increase mist count for better coverage, keep background at 3 for depth
-    const maxElements = layerType === 'mist' ? 6 : 3; // Mist: 6, Background: 3
+    const maxElements = layerType === 'mist' ? 4 : 4; // Mist: 5, Background: 3
     
     // Keep a pool of files for rotation when elements fade out
     const filePool = [...shuffledFiles];
