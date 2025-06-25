@@ -1,7 +1,8 @@
 {
   "name": "dial-up",
   "version": "1.0.0",
-  "private": true,  "scripts": {
+  "private": true,
+  "scripts": {
     "build": "node build.js",
     "build-webpack": "webpack --config webpack.js --stats=normal",
     "dev": "webpack-dev-server --config webpack.dev.js",
@@ -33,6 +34,7 @@
     "@babel/runtime": "^7.23.0",
     "@pixi/constants": "^7.4.3",
     "axios": "^1.6.2",
+    "bluebird": "^3.7.2",
     "lodash": "^4.17.21",
     "path-browserify": "^1.0.1",
     "periodic-function": "^1.1.4",

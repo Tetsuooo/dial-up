@@ -1,18 +1,20 @@
 /* globals require, console */
-const fs = require('fs').promises;
+const fs      = require('fs').promises;
 const { exec } = require('child_process');
-const chalk = require('chalk');
+const chalk   = require('chalk');
 const Promise = require('bluebird');
-const _ = require('lodash');
-const path = require('path');
+const _       = require('lodash');
+const path    = require('path');
 
 // JSON file where asset data is written
 const ASSET_DATA = 'src/assets/asset-data.json';
 
-// Function to convert an image to WebP using ImageMagick
-const convertToWebP = (inputPath, outputPath) => {
-  return new Promise((resolve, reject) => {
-    // Using 'magick' so that Windows doesn't call its built-in convert command.
+// ────────────────────────────────────────────────────────────────────────────────
+// Convert an image to WebP using ImageMagick
+// ────────────────────────────────────────────────────────────────────────────────
+const convertToWebP = (inputPath, outputPath) =>
+  new Promise((resolve, reject) => {
+    /* use `magick` so Windows doesn't call its own `convert.exe` */
     exec(`magick "${inputPath}" "${outputPath}"`, (error, stdout, stderr) => {
       if (error) {
         console.error(`Error converting ${inputPath} to WebP:`, stderr);
@@ -21,77 +23,91 @@ const convertToWebP = (inputPath, outputPath) => {
       resolve(outputPath);
     });
   });
-};
 
+// ────────────────────────────────────────────────────────────────────────────────
+// Safely read one mix/layer folder and return an array of asset objects
+// ────────────────────────────────────────────────────────────────────────────────
 const readFolderSafe = async (mix, layer) => {
   const folderPath = `src/assets/${mix}/${layer}`;
+
+  /* Skip if the layer folder doesn't exist */
   try {
     await fs.access(folderPath);
-  } catch (e) {
+  } catch {
     console.log(chalk.red(`:: WARNING could not access folder ${folderPath}`));
     return [];
   }
 
-  const files = await fs.readdir(folderPath);
-  const transformedFiles = files.sort().reverse();
+  const files            = await fs.readdir(folderPath);
+  const transformedFiles = files.sort().reverse();   // newest-looking first
 
-  // Process PNG (excluding spritesheet), JPG and JPEG files.
-  // These will be converted to WebP; upon successful conversion, the old file is deleted.
-  const imageFiles = transformedFiles.filter(file => (
-    (file.toLowerCase().endsWith('.png') && !file.toLowerCase().endsWith('.spritesheet.png')) ||
-    file.toLowerCase().endsWith('.jpg') ||
-    file.toLowerCase().endsWith('.jpeg')
-  ));
+  // ── 1. Handle PNG / JPG / JPEG → convert to WebP
+  const rasterFiles = transformedFiles.filter(f =>
+    (f.toLowerCase().endsWith('.png')  && !f.toLowerCase().endsWith('.spritesheet.png')) ||
+     f.toLowerCase().endsWith('.jpg')  ||
+     f.toLowerCase().endsWith('.jpeg')
+  );
 
-  const processedImages = await Promise.map(imageFiles, async file => {
-    const inputFile = path.join(folderPath, file);
-    const webpFilename = file.replace(/\.(png|jpg|jpeg)$/i, '.webp');
-    const outputFile = path.join(folderPath, webpFilename);
+  const processedImages = await Promise.map(rasterFiles, async file => {
+    const inputFile    = path.join(folderPath, file);
+    const webpFilename = file.replace(/\.(png|jpe?g)$/i, '.webp');
+    const outputFile   = path.join(folderPath, webpFilename);
+
     try {
       await convertToWebP(inputFile, outputFile);
-      // Remove the original file after a successful conversion:
-      await fs.unlink(inputFile);
-      console.log(chalk.green(`Converted ${file} to ${webpFilename} and deleted original.`));
+      await fs.unlink(inputFile);  // delete original
+      console.log(chalk.green(`Converted ${file} → ${webpFilename} and deleted original.`));
       return { filename: webpFilename, type: 'static' };
-    } catch (e) {
-      console.log(chalk.red(`Failed to convert ${file}. Keeping original file.`));
+    } catch {
+      console.log(chalk.red(`Failed to convert ${file}. Keeping original.`));
       return { filename: file, type: 'static' };
     }
   });
 
-  // Process GIF files: simply add them as static objects without any conversion.
-  const gifFiles = transformedFiles.filter(file => file.toLowerCase().endsWith('.gif'));
-  const processedGifs = gifFiles.map(file => ({
-    filename: file,
-    type: 'static'
-  }));
+  // ── 2. Handle GIFs (no conversion)
+  const processedGifs = transformedFiles
+    .filter(f => f.toLowerCase().endsWith('.gif'))
+    .map(  f => ({ filename: f, type: 'static' }) );
 
-  // Combine the results and return the list.
-  return [...processedImages, ...processedGifs];
+  // ── 3. Handle existing WebP files that were already in the folder
+  const newlyGenerated = new Set(processedImages.map(obj => obj.filename.toLowerCase()));
+
+  const processedWebps = transformedFiles
+    .filter(f => f.toLowerCase().endsWith('.webp') && !newlyGenerated.has(f.toLowerCase()))
+    .map(  f => ({ filename: f, type: 'static' }) );
+
+  // ── 4. Return combined list
+  return [...processedImages, ...processedGifs, ...processedWebps];
 };
 
+// ────────────────────────────────────────────────────────────────────────────────
+// Walk every mix folder and build the nested object
+// ────────────────────────────────────────────────────────────────────────────────
 const getMixFiles = async () => {
   const mixFolders = await fs.readdir('src/assets');
-  const mixObject = {};
-  // Only process folders that start with "mix"
-  const transformedMixFolders = mixFolders.filter(folder => folder.startsWith('mix'));
+  const result     = {};
 
-  await Promise.map(transformedMixFolders, async mix => {
-    const layers = await fs.readdir(`src/assets/${mix}`, { withFileTypes: true });
-    const transformedLayers = layers.filter(layer => layer.isDirectory()).map(layer => layer.name);
-    const layerObject = {};
+  const mixes = mixFolders.filter(folder => folder.startsWith('mix'));
 
-    await Promise.map(transformedLayers, async layer => {
-      const layerFilesArray = await readFolderSafe(mix, layer);
-      layerObject[layer] = layerFilesArray;
+  await Promise.map(mixes, async mix => {
+    const layerDirs = await fs.readdir(`src/assets/${mix}`, { withFileTypes: true });
+    const layers    = layerDirs.filter(l => l.isDirectory()).map(l => l.name);
+
+    const layerObj = {};
+
+    await Promise.map(layers, async layer => {
+      layerObj[layer] = await readFolderSafe(mix, layer);
     });
 
-    mixObject[mix] = layerObject;
+    result[mix] = layerObj;
   });
 
-  return mixObject;
+  return result;
 };
 
+// ────────────────────────────────────────────────────────────────────────────────
+// Run the whole thing
+// ────────────────────────────────────────────────────────────────────────────────
 (async () => {
   try {
     const files = await getMixFiles();
