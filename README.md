@@ -21,6 +21,7 @@ transparent, which blend mode, how the mist and background drift and fade, which
 
 ```
 npm install
+node read_files.js # writes src/assets/asset-data.json (not in git; needed before the first build)
 npm start          # dev server on http://localhost:3000 (serves src/assets)
 npm run build      # builds the site into docs/ (this is what GitHub Pages publishes)
 ```
@@ -35,10 +36,13 @@ The build empties `docs/` and recreates it; it puts back the two things the Mode
 1. Put the images in `src/assets/mixNN/<layer>/`, where the layer is `gradient`, `splash`,
    `background`, `mist` or `samples` (a mix needs at least a gradient and a splash). GIFs and WebPs
    are used as they are; PNGs and JPEGs are converted to WebP by the next step (needs ImageMagick).
-2. `node read_files.js` rewrites `src/assets/asset-data.json` (the list of the images of every mix).
-3. Add the mix to `src/mixurls.json` (SoundCloud player) and `src/artist-links.json` (the sc / bc
+2. `node compress_assets.js` makes the new images lighter without changing how they look: GIFs
+   become animated WebP (same frames and timing, repeating forever) and stills larger than they're
+   ever shown are scaled down. `--dry` only reports what it would do.
+3. `node read_files.js` rewrites `src/assets/asset-data.json` (the list of the images of every mix).
+4. Add the mix to `src/mixurls.json` (SoundCloud player) and `src/artist-links.json` (the sc / bc
    buttons). The number of mixes the `>` button goes up to is `MIX_COUNT` in `src/index.js`.
-4. `npm run build`, commit, push.
+5. `npm run build`, commit, push.
 
 ### Where things are
 
