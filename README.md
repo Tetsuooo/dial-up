@@ -44,6 +44,17 @@ The build empties `docs/` and recreates it; it puts back the two things the Mode
    buttons). The number of mixes the `>` button goes up to is `MIX_COUNT` in `src/index.js`.
 5. `npm run build`, commit, push.
 
+### Checking that it works
+
+```
+node tools/serve.cjs                                        # the built docs/ on http://localhost:5306
+node tools/check-mixes.cjs http://localhost:5306            # opens all 40 mixes and checks them
+node tools/check-mixes.cjs https://dial-up.modemodemodem.xyz   # the same for the live site
+```
+
+`check-mixes.cjs` needs Playwright (see the top of the file). `NOTES.md` has the history: what
+was found and changed, the numbers, and open ideas.
+
 ### Where things are
 
 | | |
@@ -52,6 +63,8 @@ The build empties `docs/` and recreates it; it puts back the two things the Mode
 | `src/dom-ui.js` | the splash panel, the social buttons, the info button |
 | `src/layers/` | the collage: `samples.js`, `backdrop.js` (mist and background), `assets.js` (loading, GIF looping), `settings.js` |
 | `src/assets/` | all the images, one folder per mix, plus `asset-data.json` |
+| `compress_assets.js`, `read_files.js` | make new images lighter; write `asset-data.json` |
+| `tools/` | a local server and a check of all the mixes |
 | `docs/` | the built site that GitHub Pages serves (don't edit by hand) |
 
 Only the images that are about to be shown are downloaded, one at a time, so a mix starts
