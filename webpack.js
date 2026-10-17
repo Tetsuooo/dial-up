@@ -6,7 +6,6 @@ module.exports = {
   mode: 'production',
   entry: './src/index.js',
   experiments: {
-    topLevelAwait: true,
     outputModule: true
   },
   output: {
@@ -16,10 +15,6 @@ module.exports = {
     clean: true
   },
   resolve: {
-    alias: {
-      '~': path.resolve(__dirname, 'src'),
-      'Strategies': path.resolve(__dirname, 'src/strategies')
-    },
     extensions: ['.js', '.mjs']
   },
   module: {
@@ -60,7 +55,12 @@ module.exports = {
           globOptions: {
             ignore: ['**/*.js', '**/*.json']
           }
-        }
+        },
+        // The Modem site's dial-up page fetches this to show its previews:
+        // https://dial-up.modemodemodem.xyz/assets/asset-data.json
+        { from: 'src/assets/asset-data.json', to: 'assets/asset-data.json' },
+        // The custom domain (GitHub Pages reads it from the published folder; the build empties docs/)
+        { from: 'CNAME', to: 'CNAME', toType: 'file' }
       ]
     })
   ]

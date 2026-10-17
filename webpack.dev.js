@@ -3,11 +3,16 @@ const baseConfig = require('./webpack.js');
 const path = require('path');
 const express = require('express');
 
-module.exports = merge(baseConfig, {
+const devConfig = merge(baseConfig, {
   mode: 'development',
   target: 'web',
   devtool: 'eval-source-map',
+  // hot reloading doesn't work with the module bundle that is built for production
+  experiments: {
+    outputModule: false
+  },
   output: {
+    module: false,
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'dist'),
     publicPath: '/'
@@ -44,3 +49,8 @@ module.exports = merge(baseConfig, {
     }
   }
 });
+
+// The dev server already serves src/assets (see `static` above), so don't copy the 800 MB of images
+devConfig.plugins = devConfig.plugins.filter(plugin => plugin.constructor.name !== 'CopyPlugin');
+
+module.exports = devConfig;

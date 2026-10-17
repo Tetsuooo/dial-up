@@ -1,8 +1,8 @@
 /**
  * DOM UI Components for Dial-Up
  * 
- * This file implements DOM-based UI elements that will always appear
- * on top of the canvas, regardless of z-index values in the PixiJS scene.
+ * This file implements DOM-based UI elements (splash panel, info button, ...) that
+ * always appear on top of the image layers (see layers/).
  */
 
 class DomUI {
@@ -33,8 +33,9 @@ class DomUI {
     
     document.body.appendChild(this.container);
     
-    // Add resize event listener
-    window.addEventListener('resize', this.handleResize.bind(this));
+    // Add resize event listener (kept, so that cleanup() can remove this very listener)
+    this.onResize = this.handleResize.bind(this);
+    window.addEventListener('resize', this.onResize);
   }
   
   /**
@@ -712,11 +713,13 @@ class DomUI {
    * Cleans up all DOM UI elements
    */
   cleanup() {
+    clearTimeout(this.autoCloseTimeoutId);
+    clearTimeout(this.splashPanelHoverCloseTimeoutId);
     if (this.container) {
       document.body.removeChild(this.container);
       this.container = null;
     }
-    window.removeEventListener('resize', this.handleResize.bind(this));
+    window.removeEventListener('resize', this.onResize);
   }
 }
 
