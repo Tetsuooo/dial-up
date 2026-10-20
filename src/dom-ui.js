@@ -520,13 +520,18 @@ class DomUI {
     /**
    * Scales navigation buttons based on window size
    */
+  /** Phones (portrait or landscape): smaller buttons — at their desktop minimums they covered too much of the collage. */
+  isPhone() {
+    return Math.min(window.innerWidth, window.innerHeight) <= 600;
+  }
+
   scaleNavButtons() {
     if (!this.navButtons.backward || !this.navButtons.forward) return;
     
     const baseSize = 40;
     const scale = this.getUIScale();
-    const size = Math.max(30, Math.round(baseSize * scale));
-    const fontSize = Math.max(16, Math.round(size * 0.6));
+    const size = this.isPhone() ? 28 : Math.max(30, Math.round(baseSize * scale));
+    const fontSize = this.isPhone() ? 16 : Math.max(16, Math.round(size * 0.6));
     
     [this.navButtons.backward, this.navButtons.forward].forEach(button => {
       button.style.width = `${size}px`;
@@ -544,8 +549,8 @@ class DomUI {
     
     const baseSize = 40;
     const scale = this.getUIScale();
-    const size = Math.max(30, Math.round(baseSize * scale));
-    const fontSize = Math.max(16, Math.round(size * 0.75));
+    const size = this.isPhone() ? 26 : Math.max(30, Math.round(baseSize * scale));
+    const fontSize = this.isPhone() ? 19 : Math.max(16, Math.round(size * 0.75));
     
     this.infoButton.style.width = `${size}px`;
     this.infoButton.style.height = `${size}px`;
@@ -692,10 +697,15 @@ class DomUI {
     if (playButton) {
       const baseSize = 225;
       const scale = this.getUIScale();
-      const size = Math.max(150, Math.round(baseSize * scale));
+      const size = this.isPhone() ? 100 : Math.max(150, Math.round(baseSize * scale));
       
       playButton.style.width = `${size}px`;
       playButton.style.height = `${size}px`;
+      // The triangle sits inside the svg with a margin of its own (20% at the left, 20% at the
+      // bottom). Phones: the svg at the corner, so the triangle keeps ~20px from the left edge and
+      // lines up with the < button's bottom; elsewhere the original spot.
+      playButton.style.left = this.isPhone() ? '0px' : '-10px';
+      playButton.style.bottom = this.isPhone() ? '0px' : '5px';
     }
     
     // Scale progress bar height

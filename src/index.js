@@ -95,6 +95,25 @@ import { assetUrl } from './layers/assets.js';
 
   const bottomRightNav = createBottomRightNavButtons();
 
+  // Size the > < buttons: smaller on phones (they covered too much of the collage there)
+  // (at load, desktop keeps the buttons' original 50px — as before, they only rescale on a resize)
+  const sizeBottomRightNav = (atLoad) => {
+    const phone = Math.min(window.innerWidth, window.innerHeight) <= 600;
+    if (atLoad && !phone) return;
+    const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    const buttonSize = phone ? 34 : Math.max(40, Math.round(50 * Math.max(0.8, Math.min(1.2, scale))));
+    const fontSize = phone ? 19 : Math.max(20, Math.round(28 * Math.max(0.8, Math.min(1.2, scale))));
+    bottomRightNav.container.style.bottom = phone ? '20px' : '40px';
+    bottomRightNav.container.style.right = phone ? '12px' : '20px';
+    bottomRightNav.container.style.gap = phone ? '6px' : '10px';
+    [bottomRightNav.prevButton, bottomRightNav.nextButton].forEach(button => {
+      button.style.width = `${buttonSize}px`;
+      button.style.height = `${buttonSize}px`;
+      button.style.fontSize = `${fontSize}px`;
+    });
+  };
+  sizeBottomRightNav(true);
+
   // Add variables needed for SoundCloud
   const svgNS = "http://www.w3.org/2000/svg";
   let scPlayer = null;
@@ -261,6 +280,7 @@ import { assetUrl } from './layers/assets.js';
 
   let playPauseSVG = createPlaySVG();
   document.body.appendChild(playPauseSVG);
+  domUI.scaleExternalUIElements(); // its size for this screen right away (smaller on phones), not only after a resize
 
   const initSoundCloud = () => {
     // the player of the previous mix (paused when changing mix) isn't needed any more
@@ -435,17 +455,7 @@ import { assetUrl } from './layers/assets.js';
       }
       
       // Scale bottom-right navigation buttons
-      if (bottomRightNav) {
-        const scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-        const buttonSize = Math.max(40, Math.round(50 * Math.max(0.8, Math.min(1.2, scale))));
-        const fontSize = Math.max(20, Math.round(28 * Math.max(0.8, Math.min(1.2, scale)))); // Updated to scale the larger font size (28px)
-        
-        [bottomRightNav.prevButton, bottomRightNav.nextButton].forEach(button => {
-          button.style.width = `${buttonSize}px`;
-          button.style.height = `${buttonSize}px`;
-          button.style.fontSize = `${fontSize}px`;
-        });
-      }
+      if (bottomRightNav) sizeBottomRightNav();
     }, 250);
   };
 
