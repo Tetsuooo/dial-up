@@ -156,6 +156,24 @@ never had it. It would be easy to add properly (see open ideas).
 - The comparison page used to approve it was a temporary local file. To redo a comparison, take a
   file from `c815206` (as above) and open both in a browser.
 
+## 20 October 2026: smaller buttons on phones
+
+Matej: the buttons were too big on a phone. On phones (short side ≤ 600px; desktop is unchanged and
+was measured):
+- play triangle 100px (it was at least 150, as `scaleExternalUIElements` has a 150px minimum)
+- `<` `>` 34px (were 50)
+- info 26px (was 32)
+- side ◀ ▶ 28px
+
+The triangle's svg sits in the corner on phones, so the triangle keeps ~20px from the left edge and its
+bottom is level with the `<` button. Before, it was flush against the edge. `isPhone()` lives in
+`dom-ui.js`; the `> <` sizing is `sizeBottomRightNav()` in `index.js`, also applied at load.
+The play button gets its size at load now too, not only after a resize. Commit b3a6f89.
+
+The Modem page (separate repo) changed at the same time: its back arrow is smaller on phones, and the
+iframe ends above Modem's minimised player bar (`--mp-mini-h`), which used to cover `<` and the
+play button.
+
 ## Gotchas
 
 - `src/assets/asset-data.json` is **not in git** (it's in `.gitignore`). It's made by
