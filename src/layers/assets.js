@@ -77,7 +77,12 @@ const isGif = url => /\.gif$/i.test(url);
 
 const gifs = new Map(); // url -> Promise<Blob>, so each GIF is only downloaded once
 
-export const forgetGifs = () => gifs.clear();
+// Forget the downloaded GIFs of one mix (or of all of them). Per mix, because the next mix is
+// already loading by the time the previous one is taken away (index.js renderPage).
+export const forgetGifs = (mix) => {
+  if (!mix) return gifs.clear();
+  for (const url of [...gifs.keys()]) if (url.startsWith(`assets/${mix}/`)) gifs.delete(url);
+};
 
 // A URL to put in an <img>, and a function to call when the image is gone.
 const loadSource = async (url, signal) => {

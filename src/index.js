@@ -356,9 +356,13 @@ import { assetUrl } from './layers/assets.js';
   // The layers (gradient, mist, samples, background) of the mix that's showing
   let currentMix = null;
 
+  let leavingMix = null; // the previous mix while it waits for the new one to cover the screen
+
   const renderPage = () => {
-    // Take away the previous mix: its images, its timers and its animations
-    if (currentMix) currentMix.destroy();
+    // The previous mix (its images, timers and animations) is taken away only once the new one
+    // covers the screen, further down. Taking it away first left the page empty for a moment:
+    // see-through, so on Modem the dial-up list behind the collage flashed up on every > / <.
+    const previousMix = currentMix;
     currentMix = null;
 
     // Clean up DOM UI
@@ -409,6 +413,19 @@ import { assetUrl } from './layers/assets.js';
       currentMix = mountMix(mixName, AssetData);
     } else {
       console.error(`No assets found for mix: ${mixName}`);
+    }
+
+    // its layers are added after the previous mix's, so they paint over it while it waits
+    if (previousMix) {
+      // > pressed again before the last mix had loaded: only keep the one that's on its way out
+      if (leavingMix) leavingMix.destroy();
+      leavingMix = previousMix;
+      const covered = currentMix ? currentMix.ready : Promise.resolve();
+      const atMost = new Promise(resolve => setTimeout(resolve, 8000)); // a very slow connection
+      Promise.race([covered, atMost]).then(() => {
+        previousMix.destroy();
+        if (leavingMix === previousMix) leavingMix = null;
+      });
     }
   };
 

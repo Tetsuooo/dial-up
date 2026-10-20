@@ -38,6 +38,8 @@ export const mountBackdrop = (layerType, files) => {
   const releases = [];
   let frame = 0;
   let alive = true;
+  let firstLoaded; // resolves when the first image is in (never, if none loads)
+  const loaded = new Promise(resolve => { firstLoaded = resolve; });
 
   const add = async (file) => {
     try {
@@ -54,6 +56,7 @@ export const mountBackdrop = (layerType, files) => {
         'visibility: hidden', 'will-change: transform, opacity',
       ].join(';');
       layer.appendChild(img);
+      firstLoaded();
       items.push({
         img,
         x: Math.random() * width, // the centre of the image, which stays on the screen
@@ -103,6 +106,7 @@ export const mountBackdrop = (layerType, files) => {
   frame = requestAnimationFrame(tick);
 
   return {
+    loaded,
     destroy() {
       alive = false;
       cancelAnimationFrame(frame);

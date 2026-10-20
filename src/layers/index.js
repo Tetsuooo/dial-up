@@ -15,7 +15,7 @@ import { mountSamples } from './samples.js';
 import { LAYER_Z } from './settings.js';
 
 const mountGradient = (file) => {
-  if (!file) return { destroy() {} };
+  if (!file) return { loaded: null, destroy() {} };
   const img = new Image();
   img.decoding = 'async';
   img.draggable = false;
@@ -26,22 +26,27 @@ const mountGradient = (file) => {
   img.style.zIndex = LAYER_Z.gradient;
   img.src = file.filename;
   document.body.appendChild(img);
-  return { destroy: () => img.remove() };
+  // decoded = ready to paint (a failed load counts too, so nobody waits for it forever)
+  const loaded = img.decode().catch(() => {});
+  return { loaded, destroy: () => img.remove() };
 };
 
 // Shows the layers of a mix; call destroy() on the result to take them all away again.
+// `ready` resolves once the mix covers the screen: its gradient has loaded (or, for a mix
+// without one, the first mist / background image).
 export const mountMix = (mixName, assetData) => {
   const files = layer => layerFiles(assetData, mixName, layer);
-  const layers = [
-    mountGradient(files('gradient')[0]),
-    mountSamples(files('samples')),
-    mountBackdrop('mist', files('mist')),
-    mountBackdrop('background', files('background')),
-  ];
+  const gradient = mountGradient(files('gradient')[0]);
+  const samples = mountSamples(files('samples'));
+  const mist = mountBackdrop('mist', files('mist'));
+  const background = mountBackdrop('background', files('background'));
+  const layers = [gradient, samples, mist, background];
   return {
+    ready: gradient.loaded || Promise.race([mist.loaded, background.loaded]),
     destroy() {
-      layers.forEach(layer => layer.destroy());
-      forgetGifs();
+      if (!layers.length) return; // already gone
+      layers.splice(0).forEach(layer => layer.destroy());
+      forgetGifs(mixName);
     },
   };
 };

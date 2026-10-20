@@ -174,6 +174,31 @@ The Modem page (separate repo) changed at the same time: its back arrow is small
 iframe ends above Modem's minimised player bar (`--mp-mini-h`), which used to cover `<` and the
 play button.
 
+## 20 October 2026: no flash between mixes
+
+Matej spotted it in a screen recording. On every `>` / `<` (and on every window resize), the page
+was empty for a moment. `renderPage()` took the old mix away first and only then mounted the new
+one, whose images still had to load. The page has no background of its own, so on Modem, where it
+sits in a frame over the dial-up list, the list flashed through. Measured with the collage in a
+frame over a magenta page, clicking `>` four times: 30 frames see-through on the live site (worst
+98.8% of the screen), 0 with the fix.
+
+- `mountMix()` returns `ready`: the new gradient is decoded (a mix without one, like mix41: its
+  first mist / background image).
+- `renderPage()` mounts the new mix first; its layers sit above the old ones. The old mix is destroyed
+  when `ready` resolves, or after 8 s on a very slow connection. If `>` is pressed again in the
+  meantime, only the mix on its way out is kept and older ones go at once, so a phone never holds
+  more than two mixes. `destroy()` can now be called twice.
+- `forgetGifs(mix)` forgets only that mix's GIFs, because the next mix is already loading by then.
+- `index.html`: `html { background: #000 }` as the fallback. On a throttled connection, pressing `>`
+  every 6 s still left 2 frames empty; they're dark now instead of showing the list. The standalone
+  site is black instead of white for the moment before the first images load.
+
+Checked: `tools/check-mixes.cjs` 40/40, five quick presses settle back to one mix with no errors,
+resize. Also from the same recording: the buttons and the cursor dropping in and out after `i` was
+the recording browser (3x, off-screen, out of graphics memory), not the site; the page's state never
+changed.
+
 ## Gotchas
 
 - `src/assets/asset-data.json` is **not in git** (it's in `.gitignore`). It's made by
